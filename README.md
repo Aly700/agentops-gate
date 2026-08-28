@@ -4,6 +4,11 @@ AgentOps Gate is a small policy and approval service for AI tool calls. An agent
 
 Approval-required decisions create a pending approval and an SQS message. Decisions and audit records are immutable, approval transitions are constrained, and audit records can be exported as date-partitioned JSON Lines objects in S3.
 
+## Status
+
+- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; 48 tests, Testcontainers-backed, green.
+- AWS: the CDK stacks synthesize; **not yet deployed** — the deploy pipeline and the cost figure below are exercised in the Day-2 step. Nothing in this README that depends on a live AWS environment should be read as verified until this line changes.
+
 ## Architecture
 
 ```mermaid
