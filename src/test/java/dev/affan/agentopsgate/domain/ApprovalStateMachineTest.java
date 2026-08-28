@@ -68,6 +68,27 @@ class ApprovalStateMachineTest {
     }
 
     @Test
+    void rejectsAHumanDecisionAtOrAfterTheDeadline() {
+        Approval approval = pendingApproval();
+
+        assertThatThrownBy(() -> approval.approve("reviewer-1", EXPIRES_AT))
+                .isInstanceOf(InvalidApprovalTransitionException.class)
+                .hasMessageContaining("expired");
+        assertThat(approval.getStatus()).isEqualTo(ApprovalStatus.PENDING);
+    }
+
+    @Test
+    void normalizesPersistedTimestampsToPostgresMicrosecondPrecision() {
+        Instant createdAt = Instant.parse("2026-08-28T12:00:00.123456789Z");
+        Instant expiresAt = Instant.parse("2026-08-28T12:30:00.987654321Z");
+
+        Approval approval = Approval.pending(UUID.randomUUID(), UUID.randomUUID(), createdAt, expiresAt);
+
+        assertThat(approval.getCreatedAt()).isEqualTo(Instant.parse("2026-08-28T12:00:00.123456Z"));
+        assertThat(approval.getExpiresAt()).isEqualTo(Instant.parse("2026-08-28T12:30:00.987654Z"));
+    }
+
+    @Test
     void rejectsABlankReviewerIdentity() {
         Approval approval = pendingApproval();
 

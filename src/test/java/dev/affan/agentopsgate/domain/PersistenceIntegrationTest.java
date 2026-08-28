@@ -6,28 +6,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import dev.affan.agentopsgate.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
         "agentops.api-key=integration-key",
         "agentops.aws.enabled=false"
 })
 class PersistenceIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"));
 
     @Autowired private PolicyService policyService;
     @Autowired private DecisionService decisionService;

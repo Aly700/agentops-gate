@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,9 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class AuditExportService {
+
+    private static final DateTimeFormatter OBJECT_STAMP =
+            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
     private final AuditRecordSource auditRecords;
     private final AuditObjectStore objectStore;
@@ -31,10 +35,7 @@ public class AuditExportService {
         Instant from = date.atStartOfDay().toInstant(ZoneOffset.UTC);
         Instant to = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
         List<AuditRecord> records = auditRecords.find(from, to);
-        String objectKey = "audit/year=%04d/month=%02d/day=%02d/audit.jsonl".formatted(
-                date.getYear(),
-                date.getMonthValue(),
-                date.getDayOfMonth());
+        String objectKey = "audit/dt=%s/%s.jsonl".formatted(date, OBJECT_STAMP.format(from));
         objectStore.put(objectKey, serialize(records));
         return new AuditExportResult(date, objectKey, records.size());
     }

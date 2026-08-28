@@ -25,8 +25,22 @@ class AuditExportServiceTest {
 
         AuditExportResult result = new AuditExportService(source, objectStore, new ObjectMapper()).export(date);
 
-        assertThat(result.objectKey()).isEqualTo("audit/year=2026/month=08/day=28/audit.jsonl");
+        assertThat(result.objectKey()).isEqualTo("audit/dt=2026-08-28/20260828T000000Z.jsonl");
         assertThat(objectStore.key).isEqualTo(result.objectKey());
+    }
+
+    @Test
+    void usesTheSameObjectKeyForRepeatedExportsOfADay() {
+        CapturingObjectStore objectStore = new CapturingObjectStore();
+        AuditExportService service = new AuditExportService(
+                (from, to) -> List.of(),
+                objectStore,
+                new ObjectMapper());
+
+        AuditExportResult first = service.export(LocalDate.of(2026, 8, 28));
+        AuditExportResult second = service.export(LocalDate.of(2026, 8, 28));
+
+        assertThat(second.objectKey()).isEqualTo(first.objectKey());
     }
 
     @Test

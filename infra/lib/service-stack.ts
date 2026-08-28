@@ -44,9 +44,12 @@ export class ServiceStack extends cdk.Stack {
       }),
       environment: {
         DB_URL: `jdbc:postgresql://${props.database.dbInstanceEndpointAddress}:${props.database.dbInstanceEndpointPort}/agentops_gate`,
+        AWS_REGION: cdk.Stack.of(this).region,
         AGENTOPS_AWS_ENABLED: 'true',
         AUDIT_EXPORT_ENABLED: 'true',
         APPROVAL_QUEUE_URL: props.approvalQueue.queueUrl,
+        APPROVAL_WORKER_ENABLED: 'true',
+        SQS_WAIT_TIME_SECONDS: '20',
         AUDIT_BUCKET: props.auditBucket.bucketName,
       },
       secrets: {

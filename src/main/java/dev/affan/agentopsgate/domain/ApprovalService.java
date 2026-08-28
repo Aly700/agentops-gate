@@ -1,5 +1,8 @@
 package dev.affan.agentopsgate.domain;
 
+import dev.affan.agentopsgate.sqs.ApprovalMessage;
+import dev.affan.agentopsgate.sqs.ApprovalMessageProcessor;
+import dev.affan.agentopsgate.sqs.ApprovalMessageValidator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -9,16 +12,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class ApprovalService {
+public class ApprovalService implements ApprovalMessageProcessor {
 
     private final ApprovalRepository approvals;
     private final AuditService auditService;
     private final Clock clock;
+    private final ApprovalMessageValidator messageValidator;
 
-    public ApprovalService(ApprovalRepository approvals, AuditService auditService, Clock clock) {
+    public ApprovalService(
+            ApprovalRepository approvals,
+            AuditService auditService,
+            Clock clock,
+            ApprovalMessageValidator messageValidator) {
         this.approvals = approvals;
         this.auditService = auditService;
         this.clock = clock;
+        this.messageValidator = messageValidator;
     }
 
     @Transactional
@@ -48,6 +57,21 @@ public class ApprovalService {
             audit(approval, AuditEventType.APPROVAL_EXPIRED);
         });
         return stale.size();
+    }
+
+    @Override
+    @Transactional
+    public void process(ApprovalMessage message) {
+        Approval approval = requireApproval(message.approvalId());
+        messageValidator.validate(message, approval);
+        if (approval.getStatus() != ApprovalStatus.PENDING) {
+            return;
+        }
+        Instant now = clock.instant();
+        if (!now.isBefore(approval.getExpiresAt())) {
+            approval.expire(now);
+            audit(approval, AuditEventType.APPROVAL_EXPIRED);
+        }
     }
 
     private Approval requireApproval(UUID id) {

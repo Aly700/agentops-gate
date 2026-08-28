@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -46,9 +47,9 @@ public class Approval {
     private Approval(UUID id, UUID decisionId, Instant createdAt, Instant expiresAt) {
         this.id = Objects.requireNonNull(id, "id");
         this.decisionId = Objects.requireNonNull(decisionId, "decisionId");
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
-        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
-        if (!expiresAt.isAfter(createdAt)) {
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt").truncatedTo(ChronoUnit.MICROS);
+        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt").truncatedTo(ChronoUnit.MICROS);
+        if (!this.expiresAt.isAfter(this.createdAt)) {
             throw new IllegalArgumentException("expiresAt must be after createdAt");
         }
         this.status = ApprovalStatus.PENDING;
@@ -81,9 +82,13 @@ public class Approval {
         if (reviewer == null || reviewer.isBlank()) {
             throw new IllegalArgumentException("decidedBy must not be blank");
         }
+        Instant decidedAt = Objects.requireNonNull(at, "at");
+        if (!decidedAt.isBefore(expiresAt)) {
+            throw new InvalidApprovalTransitionException("approval is expired");
+        }
         status = terminalStatus;
         decidedBy = reviewer;
-        decidedAt = Objects.requireNonNull(at, "at");
+        this.decidedAt = decidedAt;
     }
 
     private void requirePending() {

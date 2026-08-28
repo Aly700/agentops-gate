@@ -4,8 +4,6 @@ AgentOps Gate is a small policy and approval service for AI tool calls. An agent
 
 Approval-required decisions create a pending approval and an SQS message. Decisions and audit records are immutable, approval transitions are constrained, and audit records can be exported as date-partitioned JSON Lines objects in S3.
 
-> **Checkout status:** The policy, persistence, web, expiry, export-format, local-runtime, workflow, and CDK layers are present and compile offline. The concrete AWS SDK v2 SQS/S3 adapters and LocalStack module tests still require three artifacts that are not present in the supplied offline Maven cache: `spring-cloud-aws-starter-sqs:3.4.0`, `spring-cloud-aws-starter-s3:3.4.0`, and `org.testcontainers:localstack:2.0.5`. Until those are warmed and the adapters are added, the `local` profile intentionally fails closed instead of pretending that queue/export operations succeeded. The Compose walkthrough below describes the completed LocalStack path after that dependency gate is cleared.
-
 ## Architecture
 
 ```mermaid
@@ -15,7 +13,7 @@ flowchart LR
     Engine -->|first match; default DENY| API
     API --> DB[(RDS PostgreSQL)]
     API -->|approval message| SQS[SQS queue]
-    SQS --> Worker[Long-poll worker in the same app]
+    SQS --> Worker[Scheduled SDK v2 long-poll worker in the same app]
     Worker --> DB
     API -->|nightly or admin-triggered JSONL| S3[S3 audit bucket]
     API --> Logs[CloudWatch Logs and metrics]
@@ -24,7 +22,11 @@ flowchart LR
 
 The rules engine is a plain Java class. It sorts rules by ascending precedence, stops at the first complete match, and defaults to `DENY`. Matchers are optional except for the tool-name glob; supported dimensions are tool glob (`fs.*` and `*`), argument regex, exact agent ID, and risk tier.
 
-The application uses an AWS SDK v2 `SqsClient` long-poll worker instead of `@SqsListener`. Receipt deletion and retry behavior remain explicit, and the service does not rely on Spring Cloud AWS 3.4 listener-container compatibility with Spring Boot 4.1/Spring Framework 7. The rejected listener alternative is shorter, but it is a less predictable runtime boundary on this version combination.
+The application uses AWS SDK v2 directly. Spring Cloud AWS 3.4 is compiled against a Spring Boot 3 `PropertyMapper` API that Boot 4 removed, so keeping it would leave a binary-incompatible runtime. Explicit `SqsClient` and `S3Client` beans mean one fewer abstraction and make region, credentials, endpoint overrides, and LocalStack path-style access visible in ordinary Spring configuration.
+
+The scheduled SQS worker long-polls for 20 seconds, processes each message, and deletes its receipt only after success. A failure leaves the message for visibility-timeout retry and eventual DLQ redrive. An approval message carries only the immutable approval ID, decision ID, and expiry; the worker compares all three fields with PostgreSQL, ignores duplicate delivery after a terminal transition, and expires a still-pending approval whose deadline has passed. The independent scheduled expiry sweep covers approvals even when a message is delayed or unavailable.
+
+Queue publication is synchronous inside decision creation and completes before the database commit. A definite send failure rolls the transaction back; the rare inverse failure (SQS accepted the message but the database commit failed) produces an orphan that cannot match an approval, so the worker rejects it and SQS eventually redrives it to the DLQ. A transactional outbox would reduce those harmless orphan messages, but is deliberately outside this small service's domain.
 
 ## API
 
@@ -52,7 +54,7 @@ Prerequisites are Docker with Compose and three local-only environment variables
 export POSTGRES_USER=agentops
 export POSTGRES_PASSWORD='choose-a-local-password'
 export AGENTOPS_API_KEY='choose-a-local-api-key'
-docker compose up --build -d
+docker compose up --build -d --wait
 curl --fail http://localhost:8080/actuator/health
 ```
 
@@ -60,7 +62,7 @@ LocalStack initializes `agentops-gate-approvals`, its DLQ, and `agentops-gate-au
 
 ### Curl walkthrough
 
-Create a policy and copy the returned `id` into `POLICY_ID`:
+Create a policy and copy its `id` into `POLICY_ID`:
 
 ```bash
 curl --fail-with-body -X POST http://localhost:8080/policies \
@@ -71,38 +73,49 @@ curl --fail-with-body -X POST http://localhost:8080/policies \
 export POLICY_ID='paste-policy-id'
 ```
 
-Require approval for filesystem calls, then allow the remaining calls:
+Add an explicit deny, an approval rule, and a final allow rule. Lower precedence numbers run first:
 
 ```bash
 curl --fail-with-body -X POST "http://localhost:8080/policies/$POLICY_ID/rules" \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"toolNameGlob":"fs.*","riskTier":"HIGH","effect":"REQUIRE_APPROVAL","precedence":10}'
+  -d '{"toolNameGlob":"shell.*","effect":"DENY","precedence":10}'
 
 curl --fail-with-body -X POST "http://localhost:8080/policies/$POLICY_ID/rules" \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"toolNameGlob":"*","effect":"ALLOW","precedence":20}'
+  -d '{"toolNameGlob":"fs.*","riskTier":"HIGH","effect":"REQUIRE_APPROVAL","precedence":20}'
+
+curl --fail-with-body -X POST "http://localhost:8080/policies/$POLICY_ID/rules" \
+  -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"toolNameGlob":"*","effect":"ALLOW","precedence":30}'
 ```
 
-Evaluate a proposed call and copy the returned `id` and `approvalId`:
+Evaluate one call for each outcome. The first response is `ALLOW`, the second is `DENY`, and the third is `REQUIRE_APPROVAL`:
 
 ```bash
 curl --fail-with-body -X POST http://localhost:8080/decisions \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
   -H 'Content-Type: application/json' \
+  -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"browser.read\",\"arguments\":{\"url\":\"https://example.test\"},\"riskTier\":\"LOW\"}"
+
+curl --fail-with-body -X POST http://localhost:8080/decisions \
+  -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"shell.exec\",\"arguments\":{\"command\":\"false\"},\"riskTier\":\"CRITICAL\"}"
+
+curl --fail-with-body -X POST http://localhost:8080/decisions \
+  -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H 'Content-Type: application/json' \
   -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"fs.write\",\"arguments\":{\"path\":\"/sandbox/report.txt\"},\"riskTier\":\"HIGH\"}"
 
-export DECISION_ID='paste-decision-id'
 export APPROVAL_ID='paste-approval-id'
 ```
 
-Read and approve it, query the audit stream, and trigger an export:
+Approve the pending call, inspect the complete trail, export the current UTC day, and list the resulting object:
 
 ```bash
-curl --fail-with-body "http://localhost:8080/decisions/$DECISION_ID" \
-  -H "X-API-Key: $AGENTOPS_API_KEY"
-
 curl --fail-with-body -X POST "http://localhost:8080/approvals/$APPROVAL_ID/approve" \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
   -H 'Content-Type: application/json' \
@@ -111,14 +124,18 @@ curl --fail-with-body -X POST "http://localhost:8080/approvals/$APPROVAL_ID/appr
 curl --fail-with-body 'http://localhost:8080/audit?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z' \
   -H "X-API-Key: $AGENTOPS_API_KEY"
 
-curl --fail-with-body -X POST 'http://localhost:8080/admin/exports/audit?date=2026-08-28' \
+export EXPORT_DATE="$(date -u +%F)"
+curl --fail-with-body -X POST "http://localhost:8080/admin/exports/audit?date=$EXPORT_DATE" \
   -H "X-API-Key: $AGENTOPS_API_KEY"
 
-docker compose exec localstack awslocal s3 cp \
-  s3://agentops-gate-audit/audit/year=2026/month=08/day=28/audit.jsonl -
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 \
+  aws --endpoint-url http://localhost:4566 s3 ls \
+  "s3://agentops-gate-audit/audit/dt=$EXPORT_DATE/"
 ```
 
-Use a current UTC date in the audit and export commands when running the walkthrough.
+The LocalStack queue has a five-receive redrive policy. Worker failures leave messages undeleted; after five receives SQS moves the poison message to `agentops-gate-approvals-dlq` for inspection rather than dropping it.
+
+An export is idempotent at the object-key level: every run for a UTC day refreshes the same `audit/dt=YYYY-MM-DD/YYYYMMDDT000000Z.jsonl` key. That lets a demo-time export of the current day pick up later audit events; the production bucket's versioning retains earlier object versions for recovery.
 
 ## Configuration
 
@@ -129,13 +146,18 @@ Use a current UTC date in the audit and export commands when running the walkthr
 | `DB_PASSWORD` | yes | Database password |
 | `AGENTOPS_API_KEY` | yes | Static API credential |
 | `AGENTOPS_AWS_ENABLED` | production | Enables AWS transport adapters |
+| `AWS_REGION` | production | Region bound into both explicit SDK clients |
 | `APPROVAL_QUEUE_URL` | production/local | Exact SQS queue URL |
 | `AUDIT_BUCKET` | production/local | Exact audit bucket name |
 | `AWS_ENDPOINT_URL` | local only | LocalStack endpoint override |
 | `APPROVAL_TTL` | no | Pending lifetime; default `PT30M` |
+| `APPROVAL_EXPIRY_INTERVAL` | no | Stale-approval sweep interval; default `PT1M` |
+| `APPROVAL_WORKER_ENABLED` | no | Enables the scheduled SQS consumer; default `true` |
+| `SQS_WAIT_TIME_SECONDS` | no | SQS receive long-poll duration; default `20` |
+| `SQS_POLL_INTERVAL` | no | Delay between completed polls; default `PT1S` |
 | `AUDIT_EXPORT_ENABLED` | no | Enables nightly export |
 
-Production database credentials and the independently generated API key are injected from separate Secrets Manager values by the ECS task definition. AWS clients use the task role and the default region provider; static AWS credentials are only used by the `local` profile.
+Production database credentials and the independently generated API key are injected from separate Secrets Manager values by the ECS task definition. AWS clients use `AWS_REGION` and the task-role credential chain; static AWS credentials are only used by the `local` profile.
 
 ## Why each service
 
@@ -147,6 +169,7 @@ Production database credentials and the independently generated API key are inje
 | RDS PostgreSQL | Provides transactions, constraints, JSONB, indexes, and database-level immutability triggers. |
 | SQS + DLQ | Decouples approval work and makes retries and poison messages visible. |
 | S3 | Stores inexpensive, date-partitioned immutable-style JSONL audit exports. |
+| AWS SDK v2 directly | Spring Cloud AWS 3.4 does not support Boot 4 yet; one fewer abstraction, explicit clients. |
 | Secrets Manager | Keeps runtime database credentials out of images, task definitions, and source. |
 | CloudWatch | Receives structured ECS logs and alarms on repeated HTTP 5xx responses. |
 | AWS Budgets | Sends an early warning when monthly spend reaches the configured $10 budget. |
@@ -160,7 +183,6 @@ The CDK app contains separate Network, Data, Queue, Bucket, Service, and Budget 
 
 ```bash
 cd infra
-npm ci
 npx tsc --noEmit
 npx cdk synth
 npx cdk deploy --all --require-approval never \
@@ -175,15 +197,15 @@ The deploy workflow uses GitHub OIDC and `vars.AWS_ROLE_ARN`; it contains no sta
 Pure tests and compilation work without Docker:
 
 ```bash
-./mvnw -o -q -Dtest='RulesEngineTest,ApprovalStateMachineTest,ApiKeyFilterTest,AuditExportServiceTest,ApprovalMessageCodecTest,HttpRequestLoggingFilterTest' \
+./mvnw -o -q -Dtest='RulesEngineTest,ApprovalStateMachineTest,*CodecTest,*FilterTest,AuditExportServiceTest' \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -o -q -DskipTests package
 ```
 
-Run the complete suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host:
+Run the complete suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host. The AWS tests cover SQS publish, scheduled-worker delivery, duplicate handling, API approval, expiry, audit events, idempotent S3 export, and JSONL read-back:
 
 ```bash
-./mvnw -q verify
+./mvnw -o -q test
 ```
 
 ## Cost posture

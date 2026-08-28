@@ -32,9 +32,9 @@
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
-				<groupId>io.awspring.cloud</groupId>
-				<artifactId>spring-cloud-aws-dependencies</artifactId>
-				<version>3.4.0</version>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>2.31.54</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -43,12 +43,16 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>io.awspring.cloud</groupId>
-			<artifactId>spring-cloud-aws-starter-sqs</artifactId>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>sqs</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.awspring.cloud</groupId>
-			<artifactId>spring-cloud-aws-starter-s3</artifactId>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>apache-client</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.testcontainers</groupId>

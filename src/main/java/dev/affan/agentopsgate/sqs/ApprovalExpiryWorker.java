@@ -14,7 +14,7 @@ public final class ApprovalExpiryWorker {
     }
 
     @Scheduled(fixedDelayString = "${agentops.approval.expiry-interval:PT1M}")
-    public void expireStaleApprovals() {
-        approvalService.expireStale();
+    public int expireStaleApprovals() {
+        return approvalService.expireStale();
     }
 }
