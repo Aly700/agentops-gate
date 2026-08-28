@@ -2,8 +2,9 @@ target/
 .mvn/wrapper/*.jar
 *.log
 .env
-infra/node_modules/
-infra/cdk.out/
 .idea/
 *.iml
 .DS_Store
+infra/node_modules/
+infra/cdk.out/
+infra/dist/

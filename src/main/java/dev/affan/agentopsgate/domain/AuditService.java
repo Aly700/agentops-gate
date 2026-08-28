@@ -1,0 +1,48 @@
+package dev.affan.agentopsgate.domain;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+public class AuditService {
+
+    private final AuditRecordRepository auditRecords;
+    private final ObjectMapper objectMapper;
+    private final Clock clock;
+
+    public AuditService(AuditRecordRepository auditRecords, ObjectMapper objectMapper, Clock clock) {
+        this.auditRecords = auditRecords;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
+    }
+
+    @Transactional
+    public AuditRecord append(
+            AuditEventType eventType,
+            String aggregateType,
+            UUID aggregateId,
+            Map<String, ?> details) {
+        AuditRecord record = AuditRecord.create(
+                UUID.randomUUID(),
+                eventType,
+                aggregateType,
+                aggregateId,
+                clock.instant(),
+                objectMapper.writeValueAsString(details));
+        return auditRecords.save(record);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuditRecord> query(Instant from, Instant to) {
+        if (from == null || to == null || !from.isBefore(to)) {
+            throw new IllegalArgumentException("from must be before to");
+        }
+        return auditRecords.findByOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAscIdAsc(from, to);
+    }
+}
