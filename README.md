@@ -161,21 +161,19 @@ Production database credentials and the independently generated API key are inje
 
 ## Why each service
 
-<!-- LEAD INTERVIEW TABLE PLACEHOLDER: replace the provisional table below with the exact interview table. -->
-
-| Service | Why it is here |
-|---|---|
-| ECS Fargate | Runs one conventional Spring service without managing instances or a Kubernetes control plane. |
-| RDS PostgreSQL | Provides transactions, constraints, JSONB, indexes, and database-level immutability triggers. |
-| SQS + DLQ | Decouples approval work and makes retries and poison messages visible. |
-| S3 | Stores inexpensive, date-partitioned immutable-style JSONL audit exports. |
-| AWS SDK v2 directly | Spring Cloud AWS 3.4 does not support Boot 4 yet; one fewer abstraction, explicit clients. |
-| Secrets Manager | Keeps runtime database credentials out of images, task definitions, and source. |
-| CloudWatch | Receives structured ECS logs and alarms on repeated HTTP 5xx responses. |
-| AWS Budgets | Sends an early warning when monthly spend reaches the configured $10 budget. |
-| ECR | Stores the immutable application image used by the Fargate task definition. |
-
-<!-- END LEAD INTERVIEW TABLE PLACEHOLDER -->
+| Service | Why | Interview line |
+|---|---|---|
+| Spring Boot 4, Java 21 | The bank stack: Web, Data JPA, Validation, Actuator | "Same framework their KYC APIs run on." |
+| RDS Postgres + Flyway | Rules and decisions are relational, versioned, audited; migrations in code | "Schema changes are reviewed and replayable." |
+| SQS + DLQ | Approval is async; a human answers later; retries and dead-letter for free | "Never block the API on a human." |
+| S3 export | Analytics reads batches, not the prod DB | "Streams results for analytics without touching prod." |
+| IAM task role | Least privilege: one queue, one bucket, one secret | "Blast radius of a compromised task is one queue." |
+| Secrets Manager | No DB password in env or repo | |
+| ECS Fargate | Containers without hosts; single task with public IP for the demo | "Same image runs in Compose and in Fargate." |
+| CloudWatch | Task logs + one alarm on 5xx rate | "I know it's broken before a user does." |
+| CDK (TypeScript) | Infra as code in a language I already write | "`cdk destroy` tears down everything." |
+| GitHub Actions + OIDC | Build, test, push to ECR, deploy on main | "CI/CD with no static keys." |
+| AWS SDK v2 directly | Spring Cloud AWS 3.4 is compiled against Boot 3 and fails under Boot 4 (`PropertyMapper` binary incompatibility); explicit clients, one fewer abstraction | "I read the stack trace instead of pinning an old Boot." |
 
 ## Infrastructure and deployment
 
