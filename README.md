@@ -195,6 +195,22 @@ npx cdk deploy --all --require-approval never \
 
 The deploy workflow uses GitHub OIDC and `vars.AWS_ROLE_ARN`; it contains no static AWS keys. It creates the named ECR repository if absent, pushes the commit-SHA image, and passes that tag to CDK.
 
+### One-time GitHub OIDC bootstrap
+
+Bootstrap CDK, deploy the independent OIDC stack, and copy its role output into the repository variable:
+
+```bash
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+cd infra
+npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/us-east-1"
+npx cdk deploy AgentOpsGithubOidcStack --require-approval never
+export AWS_ROLE_ARN="$(aws cloudformation describe-stacks --stack-name AgentOpsGithubOidcStack --query \"Stacks[0].Outputs[?OutputKey=='GithubDeployRoleArn'].OutputValue\" --output text)"
+cd ..
+gh variable set AWS_ROLE_ARN --body "$AWS_ROLE_ARN"
+```
+
+If the account already has GitHub's provider, add `-c oidcProviderArn="arn:aws:iam::$AWS_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"` to the deploy command. OIDC issues short-lived credentials through repo-and-branch-scoped trust. There are no static AWS keys to rotate or leak.
+
 ## Tests
 
 Pure tests and compilation work without Docker:

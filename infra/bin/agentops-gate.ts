@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { BucketStack } from '../lib/bucket-stack';
 import { BudgetStack } from '../lib/budget-stack';
 import { DataStack } from '../lib/data-stack';
+import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { NetworkStack } from '../lib/network-stack';
 import { QueueStack } from '../lib/queue-stack';
 import { ServiceStack } from '../lib/service-stack';
@@ -12,6 +13,8 @@ const environment = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
   region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1',
 };
+
+new GithubOidcStack(app, 'AgentOpsGithubOidcStack', { env: environment });
 
 const network = new NetworkStack(app, 'AgentOpsNetworkStack', { env: environment });
 const data = new DataStack(app, 'AgentOpsDataStack', {
