@@ -7,6 +7,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import dev.affan.agentopsgate.TestcontainersConfiguration;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,7 +22,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
         "agentops.api-key=integration-key",
-        "agentops.aws.enabled=false"
+        "agentops.aws.enabled=false",
+        "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 class PersistenceIntegrationTest {
 
@@ -27,6 +31,7 @@ class PersistenceIntegrationTest {
     @Autowired private DecisionService decisionService;
     @Autowired private RuleRepository ruleRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private EntityManagerFactory entityManagerFactory;
 
     @Test
     void loadsRulesInPrecedenceOrder() {
@@ -63,6 +68,22 @@ class PersistenceIntegrationTest {
                         policy.getId()))
                 .isInstanceOf(DataAccessException.class)
                 .hasMessageContaining("immutable");
+    }
+
+    @Test
+    void warmAllowEvaluationExecutesOnlyTheDecisionAndAuditInserts() {
+        Policy policy = policyService.createPolicy(new CreatePolicyCommand(uniqueName("statement-count"), 1));
+        policyService.addRule(policy.getId(), rule(10, Effect.ALLOW));
+        EvaluateDecisionCommand command = new EvaluateDecisionCommand(
+                policy.getId(), "agent-1", "fs.read", "{}", RiskTier.LOW);
+        decisionService.evaluate(command);
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        decisionService.evaluate(command);
+
+        assertThat(statistics.getEntityInsertCount()).isEqualTo(2);
+        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(2);
     }
 
     private static CreateRuleCommand rule(int precedence, Effect effect) {

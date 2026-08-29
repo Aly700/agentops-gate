@@ -31,6 +31,7 @@ new ServiceStack(app, 'AgentOpsServiceStack', {
   databaseSecret: data.databaseSecret,
   apiKeySecret: data.apiKeySecret,
   approvalQueue: queue.approvalQueue,
+  deadLetterQueue: queue.deadLetterQueue,
   auditBucket: bucket.auditBucket,
   imageTag: app.node.tryGetContext('imageTag') ?? 'latest',
 });

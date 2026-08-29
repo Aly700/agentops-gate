@@ -5,18 +5,22 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Immutable
 @Table(name = "decisions")
-public class Decision {
+public class Decision implements Persistable<UUID> {
 
     @Id
     private UUID id;
@@ -50,6 +54,9 @@ public class Decision {
 
     @Column(name = "decided_at", nullable = false, updatable = false)
     private Instant decidedAt;
+
+    @Transient
+    private boolean newEntity = true;
 
     protected Decision() {
     }
@@ -101,7 +108,16 @@ public class Decision {
                 decidedAt);
     }
 
+    @Override
     public UUID getId() { return id; }
+
+    @Override
+    public boolean isNew() { return newEntity; }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() { newEntity = false; }
+
     public UUID getPolicyId() { return policyId; }
     public int getPolicyVersion() { return policyVersion; }
     public String getAgentId() { return agentId; }

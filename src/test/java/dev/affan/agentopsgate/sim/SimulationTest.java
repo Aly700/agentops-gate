@@ -10,6 +10,7 @@ import dev.affan.agentopsgate.domain.EvaluateDecisionCommand;
 import dev.affan.agentopsgate.domain.Policy;
 import dev.affan.agentopsgate.domain.RiskTier;
 import dev.affan.agentopsgate.domain.Rule;
+import dev.affan.agentopsgate.rules.PolicyCache;
 import dev.affan.agentopsgate.rules.RulesEngine;
 import dev.affan.agentopsgate.sqs.ApprovalExpiryWorker;
 import dev.affan.agentopsgate.sqs.ApprovalMessageCodec;
@@ -18,6 +19,7 @@ import dev.affan.agentopsgate.sqs.ApprovalQueueWorker;
 import dev.affan.agentopsgate.sqs.OutboxRelay;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,10 +36,11 @@ class SimulationTest {
     @Test
     void seededFaultsPreserveProductionInvariants() {
         long started = System.nanoTime();
+        SimulationCoverage coverage = new SimulationCoverage();
         String exactSeed = System.getProperty("sim.seed");
         int seedsRun;
         if (exactSeed != null) {
-            runSeed(Long.parseLong(exactSeed));
+            runSeed(Long.parseLong(exactSeed), coverage);
             seedsRun = 1;
         } else {
             int seedCount = Integer.getInteger("sim.seeds", DEFAULT_SEEDS);
@@ -45,15 +48,20 @@ class SimulationTest {
                 throw new IllegalArgumentException("sim.seeds must be positive");
             }
             for (long seed = 1; seed <= seedCount; seed++) {
-                runSeed(seed);
+                runSeed(seed, coverage);
             }
             seedsRun = seedCount;
         }
+        coverage.write(Path.of("target", "sim-coverage.json"));
         long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
-        System.out.printf("simulation seeds=%d elapsed_ms=%d%n", seedsRun, elapsedMillis);
+        System.out.printf(
+                "simulation seeds=%d elapsed_ms=%d %s%n",
+                seedsRun,
+                elapsedMillis,
+                coverage.summary());
     }
 
-    private static void runSeed(long seed) {
+    private static void runSeed(long seed, SimulationCoverage coverage) {
         Trace trace = new Trace(seed);
         try {
             Simulator simulator = new Simulator(seed, INITIAL_TIME, trace);
@@ -69,9 +77,9 @@ class SimulationTest {
                     auditService,
                     simulator,
                     new ApprovalMessageValidator());
+            SimpleMeterRegistry metrics = new SimpleMeterRegistry();
             DecisionService decisionService = new DecisionService(
-                    stores.policyStore(),
-                    stores.ruleStore(),
+                    new PolicyCache(stores.policyStore(), stores.ruleStore()),
                     stores.decisionStore(),
                     stores.approvalStore(),
                     new RulesEngine(),
@@ -79,12 +87,13 @@ class SimulationTest {
                     codec,
                     auditService,
                     simulator,
+                    metrics,
                     Duration.ofSeconds(2));
             OutboxRelay relay = new OutboxRelay(
                     stores.outboxStore(),
                     bus,
                     codec,
-                    new SimpleMeterRegistry(),
+                    metrics,
                     simulator);
             ApprovalQueueWorker queueWorker = new ApprovalQueueWorker(
                     bus.sqsClient(),
@@ -93,6 +102,7 @@ class SimulationTest {
                     stores.processedMessagesJdbc(simulator::instant),
                     stores.transactionManager(),
                     simulator,
+                    metrics,
                     workerProperties());
             ApprovalExpiryWorker expiryWorker = new ApprovalExpiryWorker(approvalService);
 
@@ -146,6 +156,10 @@ class SimulationTest {
 
             simulator.runUntilIdle(5_000, invariants::checkAfterStep);
             invariants.checkAfterQuiescence();
+            org.assertj.core.api.Assertions.assertThat(
+                            metrics.counter("gate.decisions", "effect", "REQUIRE_APPROVAL").count())
+                    .isEqualTo(3.0);
+            coverage.record(simulator, stores, bus);
         } catch (Throwable failure) {
             throw trace.failure(failure);
         }

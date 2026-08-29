@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=build --chown=agentops:agentops /workspace/target/agentops-gate-*.jar app.jar
 USER agentops:agentops
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Xshare:auto", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]

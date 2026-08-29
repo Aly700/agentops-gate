@@ -1,5 +1,6 @@
 package dev.affan.agentopsgate.config;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,23 +19,32 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public final class HttpRequestLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpRequestLoggingFilter.class);
+    private final MeterRegistry meterRegistry;
+
+    public HttpRequestLoggingFilter(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-        long started = System.nanoTime();
+        long started = LOGGER.isInfoEnabled() ? System.nanoTime() : 0L;
         try {
             filterChain.doFilter(request, response);
         } finally {
-            long durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-            LOGGER.info(
-                    "event=http_request method={} path={} status={} duration_ms={}",
-                    request.getMethod(),
-                    request.getRequestURI(),
-                    response.getStatus(),
-                    durationMillis);
+            int status = response.getStatus();
+            meterRegistry.counter("gate.http.responses", "status_class", status / 100 + "xx").increment();
+            if (LOGGER.isInfoEnabled()) {
+                long durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+                LOGGER.info(
+                        "event=http_request method={} path={} status={} duration_ms={}",
+                        request.getMethod(),
+                        request.getRequestURI(),
+                        status,
+                        durationMillis);
+            }
         }
     }
 }

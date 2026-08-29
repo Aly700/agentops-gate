@@ -247,6 +247,13 @@ final class InMemoryStores
                 .toList();
     }
 
+    @Override
+    public long countPending() {
+        return outboxMessages.values().stream()
+                .filter(message -> message.getSentAt() == null)
+                .count();
+    }
+
     @FunctionalInterface
     interface InstantSource {
         Instant instant();

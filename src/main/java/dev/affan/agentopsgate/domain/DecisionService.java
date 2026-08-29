@@ -1,28 +1,30 @@
 package dev.affan.agentopsgate.domain;
 
 import dev.affan.agentopsgate.rules.ProposedCall;
+import dev.affan.agentopsgate.rules.PolicyCache;
 import dev.affan.agentopsgate.rules.RuleEvaluation;
 import dev.affan.agentopsgate.rules.RulesEngine;
 import dev.affan.agentopsgate.sqs.ApprovalMessage;
 import dev.affan.agentopsgate.sqs.ApprovalMessageCodec;
 import dev.affan.agentopsgate.sqs.OutboxMessage;
 import dev.affan.agentopsgate.sqs.OutboxStore;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class DecisionService {
 
-    private final PolicyStore policies;
-    private final RuleStore rules;
+    private final PolicyCache policyCache;
     private final DecisionStore decisions;
     private final ApprovalStore approvals;
     private final RulesEngine rulesEngine;
@@ -30,11 +32,11 @@ public class DecisionService {
     private final ApprovalMessageCodec approvalMessageCodec;
     private final AuditService auditService;
     private final Clock clock;
+    private final MeterRegistry meterRegistry;
     private final Duration approvalTtl;
 
     public DecisionService(
-            PolicyStore policies,
-            RuleStore rules,
+            PolicyCache policyCache,
             DecisionStore decisions,
             ApprovalStore approvals,
             RulesEngine rulesEngine,
@@ -42,9 +44,9 @@ public class DecisionService {
             ApprovalMessageCodec approvalMessageCodec,
             AuditService auditService,
             Clock clock,
+            MeterRegistry meterRegistry,
             @Value("${agentops.approval.ttl:PT30M}") Duration approvalTtl) {
-        this.policies = policies;
-        this.rules = rules;
+        this.policyCache = policyCache;
         this.decisions = decisions;
         this.approvals = approvals;
         this.rulesEngine = rulesEngine;
@@ -52,16 +54,16 @@ public class DecisionService {
         this.approvalMessageCodec = approvalMessageCodec;
         this.auditService = auditService;
         this.clock = clock;
+        this.meterRegistry = meterRegistry;
         this.approvalTtl = approvalTtl;
     }
 
     @Transactional
     public DecisionOutcome evaluate(EvaluateDecisionCommand command) {
-        Policy policy = policies.findPolicyById(command.policyId())
-                .orElseThrow(() -> new ResourceNotFoundException("policy", command.policyId()));
-        List<Rule> orderedRules = rules.findRulesByPolicyId(policy.getId());
+        PolicyCache.PolicyRules policyRules = policyCache.get(command.policyId());
+        Policy policy = policyRules.policy();
         RuleEvaluation evaluation = rulesEngine.evaluate(
-                orderedRules.stream().map(Rule::toDefinition).toList(),
+                policyRules.rules().stream().map(Rule::toDefinition).toList(),
                 new ProposedCall(
                         command.agentId(),
                         command.toolName(),
@@ -85,6 +87,7 @@ public class DecisionService {
         if (decision.getEffect() == Effect.REQUIRE_APPROVAL) {
             approval = createApproval(decision, now);
         }
+        recordDecisionAfterCommit(decision.getEffect());
         return new DecisionOutcome(decision, approval);
     }
 
@@ -130,5 +133,21 @@ public class DecisionService {
                 "DECISION",
                 decision.getId(),
                 details);
+    }
+
+    private void recordDecisionAfterCommit(Effect effect) {
+        Runnable increment = () -> meterRegistry
+                .counter("gate.decisions", "effect", effect.name())
+                .increment();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    increment.run();
+                }
+            });
+        } else {
+            increment.run();
+        }
     }
 }

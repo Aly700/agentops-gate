@@ -1,5 +1,6 @@
 package dev.affan.agentopsgate.domain;
 
+import dev.affan.agentopsgate.rules.PolicyCache;
 import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
@@ -7,6 +8,8 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class PolicyService {
@@ -14,16 +17,19 @@ public class PolicyService {
     private final PolicyRepository policies;
     private final RuleRepository rules;
     private final AuditService auditService;
+    private final PolicyCache policyCache;
     private final Clock clock;
 
     public PolicyService(
             PolicyRepository policies,
             RuleRepository rules,
             AuditService auditService,
+            PolicyCache policyCache,
             Clock clock) {
         this.policies = policies;
         this.rules = rules;
         this.auditService = auditService;
+        this.policyCache = policyCache;
         this.clock = clock;
     }
 
@@ -66,6 +72,7 @@ public class PolicyService {
                         "policyId", policyId,
                         "effect", rule.getEffect(),
                         "precedence", rule.getPrecedence()));
+        invalidateCacheAfterCommit(policyId);
         return rule;
     }
 
@@ -82,5 +89,18 @@ public class PolicyService {
 
     private static String emptyToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private void invalidateCacheAfterCommit(UUID policyId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    policyCache.invalidate(policyId);
+                }
+            });
+        } else {
+            policyCache.invalidate(policyId);
+        }
     }
 }

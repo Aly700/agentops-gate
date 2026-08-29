@@ -30,7 +30,11 @@ export default function () {
     policyId: __ENV.POLICY_ID, agentId: `agent-${__VU}`, toolName: tool,
     arguments: { i: __ITER }, riskTier: tool === 'fs.write' ? 'HIGH' : 'LOW',
   });
-  const res = http.post(`${base}/decisions`, body, { headers });
+  const requestHeaders = {
+    ...headers,
+    'Idempotency-Key': `k6-${__VU}-${__ITER}-${Date.now()}`,
+  };
+  const res = http.post(`${base}/decisions`, body, { headers: requestHeaders });
   latency.add(res.timings.duration);
   check(res, { 'status 200/201': (r) => r.status === 200 || r.status === 201 });
 }

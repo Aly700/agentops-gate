@@ -7,4 +7,6 @@ public interface OutboxStore {
     OutboxMessage storeOutboxMessage(OutboxMessage message);
 
     List<OutboxMessage> lockPendingBatch(int batchSize);
+
+    long countPending();
 }

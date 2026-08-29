@@ -1,6 +1,9 @@
 package dev.affan.agentopsgate.sqs;
 
 import dev.affan.agentopsgate.config.AwsProperties;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.sql.Timestamp;
 import java.time.Clock;
 import org.slf4j.Logger;
@@ -33,6 +36,8 @@ public final class ApprovalQueueWorker {
     private final String queueUrl;
     private final int waitTimeSeconds;
     private final int maxMessages;
+    private final Counter processedCounter;
+    private final Counter duplicateCounter;
 
     @Autowired
     public ApprovalQueueWorker(
@@ -42,11 +47,13 @@ public final class ApprovalQueueWorker {
             JdbcTemplate jdbcTemplate,
             PlatformTransactionManager transactionManager,
             Clock clock,
+            MeterRegistry meterRegistry,
             AwsProperties properties) {
         this(
                 sqsClient,
                 codec,
                 transactionalHandler(processor, jdbcTemplate, transactionManager, clock),
+                meterRegistry,
                 properties);
     }
 
@@ -55,13 +62,17 @@ public final class ApprovalQueueWorker {
             ApprovalMessageCodec codec,
             ApprovalMessageProcessor processor,
             AwsProperties properties) {
-        this(sqsClient, codec, (MessageHandler) processor::process, properties);
+        this(sqsClient, codec, message -> {
+            processor.process(message);
+            return ProcessingResult.PROCESSED;
+        }, new SimpleMeterRegistry(), properties);
     }
 
     private ApprovalQueueWorker(
             SqsClient sqsClient,
             ApprovalMessageCodec codec,
             MessageHandler messageHandler,
+            MeterRegistry meterRegistry,
             AwsProperties properties) {
         this.sqsClient = sqsClient;
         this.codec = codec;
@@ -69,6 +80,8 @@ public final class ApprovalQueueWorker {
         this.queueUrl = properties.getSqs().getQueueUrl();
         this.waitTimeSeconds = properties.getSqs().getWaitTimeSeconds();
         this.maxMessages = properties.getSqs().getMaxMessages();
+        this.processedCounter = meterRegistry.counter("gate.worker.processed");
+        this.duplicateCounter = meterRegistry.counter("gate.worker.duplicates");
         if (!StringUtils.hasText(queueUrl)) {
             throw new IllegalStateException("agentops.aws.sqs.queue-url must be configured when AWS is enabled");
         }
@@ -109,7 +122,12 @@ public final class ApprovalQueueWorker {
 
     boolean processAndDelete(Message message) {
         try {
-            messageHandler.process(codec.decode(message.body()));
+            ProcessingResult result = messageHandler.process(codec.decode(message.body()));
+            if (result == ProcessingResult.PROCESSED) {
+                processedCounter.increment();
+            } else {
+                duplicateCounter.increment();
+            }
             sqsClient.deleteMessage(DeleteMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .receiptHandle(message.receiptHandle())
@@ -130,7 +148,7 @@ public final class ApprovalQueueWorker {
             PlatformTransactionManager transactionManager,
             Clock clock) {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        return message -> transaction.executeWithoutResult(status -> {
+        return message -> transaction.execute(status -> {
             int inserted = jdbcTemplate.update(
                     """
                     INSERT INTO processed_messages (message_id, processed_at)
@@ -141,12 +159,19 @@ public final class ApprovalQueueWorker {
                     Timestamp.from(clock.instant()));
             if (inserted == 1) {
                 processor.process(message);
+                return ProcessingResult.PROCESSED;
             }
+            return ProcessingResult.DUPLICATE;
         });
     }
 
     @FunctionalInterface
     private interface MessageHandler {
-        void process(ApprovalMessage message);
+        ProcessingResult process(ApprovalMessage message);
+    }
+
+    private enum ProcessingResult {
+        PROCESSED,
+        DUPLICATE
     }
 }

@@ -6,7 +6,7 @@ Approval-required decisions create a pending approval and transactional outbox r
 
 ## Status
 
-- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; 58 tests span pure unit, PostgreSQL, and LocalStack coverage.
+- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; the test suite spans pure unit, PostgreSQL, and LocalStack coverage.
 - AWS: the CDK stacks synthesize; **not yet deployed** — the deploy pipeline and the cost figure below are exercised in the Day-2 step. Nothing in this README that depends on a live AWS environment should be read as verified until this line changes.
 
 ## Architecture
@@ -164,6 +164,7 @@ An export is idempotent at the object-key level: every run for a UTC day refresh
 | `DB_PASSWORD` | yes | Database password |
 | `AGENTOPS_API_KEY` | yes | Static API credential |
 | `AGENTOPS_AWS_ENABLED` | production | Enables AWS transport adapters |
+| `AGENTOPS_CLOUDWATCH_METRICS_ENABLED` | production | Enables the `AgentOpsGate` Micrometer registry; requires AWS transport to be enabled |
 | `AWS_REGION` | production | Region bound into both explicit SDK clients |
 | `APPROVAL_QUEUE_URL` | production/local | Exact SQS queue URL |
 | `APPROVAL_DLQ_URL` | production/local | Exact approval DLQ URL used by admin replay |
@@ -191,7 +192,7 @@ Production database credentials and the independently generated API key are inje
 | IAM task role | Least privilege: one queue, one bucket, one secret | "Blast radius of a compromised task is one queue." |
 | Secrets Manager | No DB password in env or repo | |
 | ECS Fargate | Containers without hosts; single task with public IP for the demo | "Same image runs in Compose and in Fargate." |
-| CloudWatch | Task logs + one alarm on 5xx rate | "I know it's broken before a user does." |
+| CloudWatch | Structured logs, application/ECS dashboard, and alarms on 5xx responses and DLQ depth | "I know it's broken before a user does." |
 | CDK (TypeScript) | Infra as code in a language I already write | "`cdk destroy` tears down everything." |
 | GitHub Actions + OIDC | Build, test, push to ECR, deploy on main | "CI/CD with no static keys." |
 | AWS SDK v2 directly | Spring Cloud AWS 3.4 is compiled against Boot 3 and fails under Boot 4 (`PropertyMapper` binary incompatibility); explicit clients, one fewer abstraction | "I read the stack trace instead of pinning an old Boot." |
@@ -206,7 +207,8 @@ npx tsc --noEmit
 npx cdk synth
 npx cdk deploy --all --require-approval never \
   -c imageTag='<existing-ecr-image-tag>' \
-  -c budgetEmail='alerts@example.test'
+  -c budgetEmail='alerts@example.test' \
+  -c taskCpu=256 -c taskMemory=512
 ```
 
 The deploy workflow uses GitHub OIDC and `vars.AWS_ROLE_ARN`; it contains no static AWS keys. It creates the named ECR repository if absent, pushes the commit-SHA image, and passes that tag to CDK.
@@ -236,6 +238,8 @@ Pure tests and compilation work without Docker:
   -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -o -q -DskipTests package
 ```
+
+The default Maven test discovery includes both JUnit `*Test` classes and jqwik `*Properties` classes. `SimulationTest` runs 200 deterministic seeds by default, prints its aggregate fault/terminal-state coverage, and writes the same data to `target/sim-coverage.json`; use `-Dsim.seeds=2000` for the long run or `-Dsim.seed=<n>` to reproduce one trace.
 
 Run the complete suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host. The AWS tests cover SQS publish, scheduled-worker delivery, duplicate handling, API approval, expiry, audit events, idempotent S3 export, and JSONL read-back:
 

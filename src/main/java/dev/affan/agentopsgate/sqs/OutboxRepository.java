@@ -22,4 +22,8 @@ public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID>, Ou
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     List<OutboxMessage> lockPendingBatch(@Param("batchSize") int batchSize);
+
+    @Override
+    @Query("select count(message) from OutboxMessage message where message.sentAt is null")
+    long countPending();
 }
