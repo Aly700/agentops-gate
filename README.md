@@ -6,10 +6,14 @@ AgentOps Gate evaluates proposed AI tool calls against an ordered policy. It ret
 
 As of 2026-08-29:
 
-- The lead's Docker run at commit `4dd7b9d` passed all 70 tests, including PostgreSQL and LocalStack integration tests.
-- The first AWS deployment and API-to-S3 walkthrough were completed by hand; the results are in [the live smoke record](docs/evidence/2026-08-29-aws-smoke.md).
-- The tuned 0.25 vCPU run, 0.5 vCPU comparison, and chaos captures are still being recorded by the lead. Their result fields remain blank below.
-- The GitHub Actions deployment is defined but has not been exercised because the repository is not public yet.
+- Local: `docker compose up` runs the full flow; **75 tests** pass with Docker (Testcontainers PostgreSQL
+  and LocalStack), plus the deterministic simulation (2,000 seeds) and four jqwik properties.
+- AWS: deployed by hand with `cdk deploy` into a personal account, exercised end to end, load-tested at
+  two task sizes, chaos-tested, then destroyed. Every number in this README comes from those runs and
+  is recorded under [docs/evidence/](docs/evidence/). The account currently holds no running resources.
+- CI/CD: the GitHub Actions workflows and the OIDC deploy role are defined and synthesize, but have
+  **not been exercised** — the repository is not public yet. Until it is, "deployed by hand" is the
+  accurate description.
 
 ## Problem
 
@@ -73,7 +77,7 @@ A fresh 2,000-seed run completed 251,759 steps and created 6,000 decisions. It f
 
 The rules engine also has four jqwik properties with 1,000 trials each: generated policies agree with an independent reference evaluator, unmatched calls default to deny, a lower-priority rule cannot change an existing match, and glob matching agrees with a separate regex translation. Surefire writes `TEST-dev.affan.agentopsgate.rules.RulesEngineProperties.xml`, so these properties run in the default suite.
 
-The lead's Docker suite passed 70/70 tests. Its Testcontainers coverage uses PostgreSQL for migrations, transactions, API idempotency, and persistence, and LocalStack for SQS publishing, outbox retry, duplicate delivery, DLQ replay, approval expiry, S3 export, and JSONL read-back.
+The Docker-backed suite passes 75/75 tests. Its Testcontainers coverage uses PostgreSQL for migrations, transactions, API idempotency, and persistence, and LocalStack for SQS publishing, outbox retry, duplicate delivery, DLQ replay, approval expiry, S3 export, and JSONL read-back.
 
 ## Exactly-once plumbing
 
