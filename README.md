@@ -373,7 +373,7 @@ Pure tests, the 2,000-seed simulation, and compilation work without Docker:
 
 The default Maven discovery includes JUnit `*Test` and jqwik `*Properties` classes. `SimulationTest` uses 200 seeds by default; set `-Dsim.seed=<n>` to reproduce one seed.
 
-Run the complete 70-test suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host:
+Run the complete 75-test suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host:
 
 ```bash
 ./mvnw -o -q test
