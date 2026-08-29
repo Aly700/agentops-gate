@@ -3,8 +3,10 @@ package dev.affan.agentopsgate.domain;
 import dev.affan.agentopsgate.sqs.ApprovalMessage;
 import dev.affan.agentopsgate.sqs.ApprovalMessageProcessor;
 import dev.affan.agentopsgate.sqs.ApprovalMessageValidator;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,6 +46,31 @@ public class ApprovalService implements ApprovalMessageProcessor {
         approval.deny(decidedBy, clock.instant());
         audit(approval, AuditEventType.APPROVAL_DENIED);
         return approval;
+    }
+
+    @Transactional(readOnly = true)
+    public Approval get(UUID id) {
+        return requireApproval(id);
+    }
+
+    @Transactional(readOnly = true)
+    public ApprovalPage list(ApprovalStatus status, int limit, String cursor) {
+        if (status == null) {
+            throw new IllegalArgumentException("status is required");
+        }
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("limit must be between 1 and 100");
+        }
+        ApprovalCursor decodedCursor = decodeCursor(cursor);
+        List<Approval> fetched = approvals.findApprovals(
+                status,
+                decodedCursor == null ? null : decodedCursor.createdAt(),
+                decodedCursor == null ? null : decodedCursor.id(),
+                limit + 1);
+        boolean hasNext = fetched.size() > limit;
+        List<Approval> items = hasNext ? List.copyOf(fetched.subList(0, limit)) : List.copyOf(fetched);
+        String nextCursor = hasNext ? encodeCursor(items.getLast()) : null;
+        return new ApprovalPage(items, nextCursor);
     }
 
     @Transactional
@@ -87,5 +114,40 @@ public class ApprovalService implements ApprovalMessageProcessor {
                 Map.of(
                         "decisionId", approval.getDecisionId(),
                         "status", approval.getStatus()));
+    }
+
+    private static String encodeCursor(Approval approval) {
+        String value = approval.getCreatedAt() + "|" + approval.getId();
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ApprovalCursor decodeCursor(String cursor) {
+        if (cursor == null) {
+            return null;
+        }
+        try {
+            String decoded = new String(
+                    Base64.getUrlDecoder().decode(cursor),
+                    StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", -1);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("cursor is invalid");
+            }
+            return new ApprovalCursor(Instant.parse(parts[0]), UUID.fromString(parts[1]));
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("cursor is invalid", exception);
+        }
+    }
+
+    public record ApprovalPage(List<Approval> items, String nextCursor) {
+
+        public ApprovalPage {
+            items = List.copyOf(items);
+        }
+    }
+
+    private record ApprovalCursor(Instant createdAt, UUID id) {
     }
 }

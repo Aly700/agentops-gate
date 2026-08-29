@@ -88,7 +88,7 @@ SQS delivery and outbox publishing are at least once. The application makes thei
 | `processed_messages` transaction | Duplicate SQS delivery or relay retry | The message claim and approval notification effect commit together; duplicates are deleted without a second effect. |
 | DLQ and audited replay endpoint | Poison messages and repeated worker failure | SQS isolates a message after five receives; an operator fixes the cause and moves up to ten messages back through the API. |
 
-The relay claims batches of 50 with `FOR UPDATE SKIP LOCKED`. It records `sent_at` after a successful send and retains attempt/error data after failure. The worker long-polls for up to 20 seconds and deletes a receipt only after processing succeeds. The independent expiry sweep prevents a delayed or unavailable queue from keeping an approval pending forever.
+The relay claims batches of 50 with `FOR UPDATE SKIP LOCKED`. It records `sent_at` after a successful send and retains attempt/error data after failure. The worker long-polls for up to 20 seconds and deletes a receipt only after processing succeeds. An undecodable message logs `event=approval_queue_message_invalid` with its SQS message ID, increments `gate.worker.invalid`, and remains on the queue for redrive. In AWS, five receives with a 60-second visibility timeout move it to the DLQ after about five minutes; replay returns it to the main queue for another five attempts. The independent expiry sweep prevents a delayed or unavailable queue from keeping an approval pending forever.
 
 ## Performance
 
@@ -139,7 +139,7 @@ npx cdk deploy AgentOpsServiceStack --require-approval never \
 
 ## Operations
 
-CloudWatch export is enabled only when both `agentops.aws.enabled=true` and `agentops.metrics.cloudwatch.enabled=true`; local and test profiles disable it. The `AgentOpsGate` namespace contains decision counts by effect, outbox backlog/sent/failed, worker processed/duplicate counts, HTTP response classes, and `http.server.requests` latency histograms.
+CloudWatch export is enabled only when both `agentops.aws.enabled=true` and `agentops.metrics.cloudwatch.enabled=true`; local and test profiles disable it. The `AgentOpsGate` namespace contains decision counts by effect, outbox backlog/sent/failed, worker processed/duplicate/invalid counts, HTTP response classes, and `http.server.requests` latency histograms.
 
 The CDK service stack creates:
 
@@ -211,6 +211,8 @@ All API routes except `/actuator/health` require `X-API-Key`. `POST /decisions` 
 | `POST` | `/policies/{id}/rules` | Append a rule at a precedence |
 | `POST` | `/decisions` | Evaluate and persist a proposed call; requires `Idempotency-Key` |
 | `GET` | `/decisions/{id}` | Read an immutable decision |
+| `GET` | `/approvals/{id}` | Read an approval |
+| `GET` | `/approvals?status=&limit=&cursor=` | List approvals by status, newest first; default limit 50, maximum 100 |
 | `POST` | `/approvals/{id}/approve` | Approve a pending approval |
 | `POST` | `/approvals/{id}/deny` | Deny a pending approval |
 | `GET` | `/audit?from=&to=` | Query the append-only audit stream |

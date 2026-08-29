@@ -38,6 +38,7 @@ public final class ApprovalQueueWorker {
     private final int maxMessages;
     private final Counter processedCounter;
     private final Counter duplicateCounter;
+    private final Counter invalidCounter;
 
     @Autowired
     public ApprovalQueueWorker(
@@ -82,6 +83,7 @@ public final class ApprovalQueueWorker {
         this.maxMessages = properties.getSqs().getMaxMessages();
         this.processedCounter = meterRegistry.counter("gate.worker.processed");
         this.duplicateCounter = meterRegistry.counter("gate.worker.duplicates");
+        this.invalidCounter = meterRegistry.counter("gate.worker.invalid");
         if (!StringUtils.hasText(queueUrl)) {
             throw new IllegalStateException("agentops.aws.sqs.queue-url must be configured when AWS is enabled");
         }
@@ -121,8 +123,19 @@ public final class ApprovalQueueWorker {
     }
 
     boolean processAndDelete(Message message) {
+        ApprovalMessage approvalMessage;
         try {
-            ProcessingResult result = messageHandler.process(codec.decode(message.body()));
+            approvalMessage = codec.decode(message.body());
+        } catch (RuntimeException exception) {
+            invalidCounter.increment();
+            LOGGER.warn(
+                    "event=approval_queue_message_invalid message_id={} error_type={}",
+                    message.messageId(),
+                    exception.getClass().getSimpleName());
+            return false;
+        }
+        try {
+            ProcessingResult result = messageHandler.process(approvalMessage);
             if (result == ProcessingResult.PROCESSED) {
                 processedCounter.increment();
             } else {

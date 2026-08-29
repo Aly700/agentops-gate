@@ -2,6 +2,10 @@ package dev.affan.agentopsgate.sqs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import dev.affan.agentopsgate.config.AwsProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Proxy;
@@ -14,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -110,6 +115,45 @@ class ApprovalQueueWorkerTest {
         assertThat(deletes).hasSize(2);
         assertThat(metrics.counter("gate.worker.processed").count()).isEqualTo(1.0);
         assertThat(metrics.counter("gate.worker.duplicates").count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void recordsInvalidMessagesAndLeavesThemForRedrive() {
+        List<DeleteMessageRequest> deletes = new ArrayList<>();
+        SqsClient sqsClient = sqsClient(
+                List.of(sqsMessage("invalid-42", "receipt-42", "not-json")),
+                new AtomicReference<>(),
+                deletes);
+        AtomicInteger effects = new AtomicInteger();
+        SimpleMeterRegistry metrics = new SimpleMeterRegistry();
+        ApprovalQueueWorker worker = new ApprovalQueueWorker(
+                sqsClient,
+                codec,
+                ignored -> effects.incrementAndGet(),
+                new JdbcTemplate(),
+                transactionManager(),
+                Clock.fixed(Instant.parse("2026-08-29T12:00:00Z"), ZoneOffset.UTC),
+                metrics,
+                properties());
+        Logger logger = (Logger) LoggerFactory.getLogger(ApprovalQueueWorker.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            int handled = worker.poll();
+
+            assertThat(handled).isZero();
+            assertThat(effects).hasValue(0);
+            assertThat(deletes).isEmpty();
+            assertThat(metrics.counter("gate.worker.invalid").count()).isEqualTo(1.0);
+            assertThat(appender.list)
+                    .filteredOn(event -> event.getLevel() == Level.WARN)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("event=approval_queue_message_invalid", "message_id=invalid-42"));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     private static SqsClient sqsClient(

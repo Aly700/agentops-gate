@@ -199,6 +199,25 @@ final class InMemoryStores
     }
 
     @Override
+    public List<Approval> findApprovals(
+            ApprovalStatus status,
+            Instant cursorCreatedAt,
+            UUID cursorId,
+            int limit) {
+        return approvals.values().stream()
+                .filter(approval -> approval.getStatus() == status)
+                .filter(approval -> cursorCreatedAt == null
+                        || approval.getCreatedAt().isBefore(cursorCreatedAt)
+                        || (approval.getCreatedAt().equals(cursorCreatedAt)
+                                && approval.getId().compareTo(cursorId) < 0))
+                .sorted(Comparator.comparing(Approval::getCreatedAt)
+                        .thenComparing(Approval::getId)
+                        .reversed())
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
     public List<Approval> findStaleApprovals(ApprovalStatus status, Instant expiresAt) {
         return approvals.values().stream()
                 .filter(approval -> approval.getStatus() == status)
