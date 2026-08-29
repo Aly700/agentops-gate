@@ -4,7 +4,9 @@ import dev.affan.agentopsgate.rules.ProposedCall;
 import dev.affan.agentopsgate.rules.RuleEvaluation;
 import dev.affan.agentopsgate.rules.RulesEngine;
 import dev.affan.agentopsgate.sqs.ApprovalMessage;
-import dev.affan.agentopsgate.sqs.ApprovalQueuePublisher;
+import dev.affan.agentopsgate.sqs.ApprovalMessageCodec;
+import dev.affan.agentopsgate.sqs.OutboxMessage;
+import dev.affan.agentopsgate.sqs.OutboxRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,7 +26,8 @@ public class DecisionService {
     private final DecisionRepository decisions;
     private final ApprovalRepository approvals;
     private final RulesEngine rulesEngine;
-    private final ApprovalQueuePublisher approvalQueue;
+    private final OutboxRepository outbox;
+    private final ApprovalMessageCodec approvalMessageCodec;
     private final AuditService auditService;
     private final Clock clock;
     private final Duration approvalTtl;
@@ -35,7 +38,8 @@ public class DecisionService {
             DecisionRepository decisions,
             ApprovalRepository approvals,
             RulesEngine rulesEngine,
-            ApprovalQueuePublisher approvalQueue,
+            OutboxRepository outbox,
+            ApprovalMessageCodec approvalMessageCodec,
             AuditService auditService,
             Clock clock,
             @Value("${agentops.approval.ttl:PT30M}") Duration approvalTtl) {
@@ -44,7 +48,8 @@ public class DecisionService {
         this.decisions = decisions;
         this.approvals = approvals;
         this.rulesEngine = rulesEngine;
-        this.approvalQueue = approvalQueue;
+        this.outbox = outbox;
+        this.approvalMessageCodec = approvalMessageCodec;
         this.auditService = auditService;
         this.clock = clock;
         this.approvalTtl = approvalTtl;
@@ -102,8 +107,14 @@ public class DecisionService {
                 Map.of(
                         "decisionId", decision.getId(),
                         "expiresAt", approval.getExpiresAt()));
-        approvalQueue.publish(new ApprovalMessage(
-                approval.getId(), decision.getId(), approval.getExpiresAt()));
+        ApprovalMessage message = new ApprovalMessage(
+                approval.getId(), decision.getId(), approval.getExpiresAt());
+        outbox.save(OutboxMessage.pending(
+                UUID.randomUUID(),
+                "APPROVAL",
+                approval.getId(),
+                approvalMessageCodec.encode(message),
+                now));
         return approval;
     }
 

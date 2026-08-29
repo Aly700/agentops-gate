@@ -1,11 +1,16 @@
 package dev.affan.agentopsgate.sqs;
 
 import dev.affan.agentopsgate.config.AwsProperties;
+import java.sql.Timestamp;
+import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
@@ -23,7 +28,7 @@ public final class ApprovalQueueWorker {
 
     private final SqsClient sqsClient;
     private final ApprovalMessageCodec codec;
-    private final ApprovalMessageProcessor processor;
+    private final MessageHandler messageHandler;
     private final String queueUrl;
     private final int waitTimeSeconds;
     private final int maxMessages;
@@ -32,10 +37,33 @@ public final class ApprovalQueueWorker {
             SqsClient sqsClient,
             ApprovalMessageCodec codec,
             ApprovalMessageProcessor processor,
+            JdbcTemplate jdbcTemplate,
+            PlatformTransactionManager transactionManager,
+            Clock clock,
+            AwsProperties properties) {
+        this(
+                sqsClient,
+                codec,
+                transactionalHandler(processor, jdbcTemplate, transactionManager, clock),
+                properties);
+    }
+
+    ApprovalQueueWorker(
+            SqsClient sqsClient,
+            ApprovalMessageCodec codec,
+            ApprovalMessageProcessor processor,
+            AwsProperties properties) {
+        this(sqsClient, codec, (messageId, message) -> processor.process(message), properties);
+    }
+
+    private ApprovalQueueWorker(
+            SqsClient sqsClient,
+            ApprovalMessageCodec codec,
+            MessageHandler messageHandler,
             AwsProperties properties) {
         this.sqsClient = sqsClient;
         this.codec = codec;
-        this.processor = processor;
+        this.messageHandler = messageHandler;
         this.queueUrl = properties.getSqs().getQueueUrl();
         this.waitTimeSeconds = properties.getSqs().getWaitTimeSeconds();
         this.maxMessages = properties.getSqs().getMaxMessages();
@@ -50,7 +78,9 @@ public final class ApprovalQueueWorker {
         }
     }
 
-    @Scheduled(fixedDelayString = "${agentops.aws.sqs.poll-interval:PT1S}")
+    @Scheduled(
+            fixedDelayString = "${agentops.aws.sqs.poll-interval:PT1S}",
+            initialDelayString = "${agentops.aws.sqs.worker-initial-delay:PT1S}")
     public int poll() {
         ReceiveMessageResponse response;
         try {
@@ -75,9 +105,9 @@ public final class ApprovalQueueWorker {
         return processedCount;
     }
 
-    private boolean processAndDelete(Message message) {
+    boolean processAndDelete(Message message) {
         try {
-            processor.process(codec.decode(message.body()));
+            messageHandler.process(message.messageId(), codec.decode(message.body()));
             sqsClient.deleteMessage(DeleteMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .receiptHandle(message.receiptHandle())
@@ -90,5 +120,31 @@ public final class ApprovalQueueWorker {
                     exception.getClass().getSimpleName());
             return false;
         }
+    }
+
+    private static MessageHandler transactionalHandler(
+            ApprovalMessageProcessor processor,
+            JdbcTemplate jdbcTemplate,
+            PlatformTransactionManager transactionManager,
+            Clock clock) {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        return (messageId, message) -> transaction.executeWithoutResult(status -> {
+            int inserted = jdbcTemplate.update(
+                    """
+                    INSERT INTO processed_messages (message_id, processed_at)
+                    VALUES (?, ?)
+                    ON CONFLICT (message_id) DO NOTHING
+                    """,
+                    messageId,
+                    Timestamp.from(clock.instant()));
+            if (inserted == 1) {
+                processor.process(message);
+            }
+        });
+    }
+
+    @FunctionalInterface
+    private interface MessageHandler {
+        void process(String messageId, ApprovalMessage message);
     }
 }

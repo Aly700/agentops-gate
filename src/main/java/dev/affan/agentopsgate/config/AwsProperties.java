@@ -75,6 +75,7 @@ public class AwsProperties {
     public static class Sqs {
 
         private String queueUrl;
+        private String dlqUrl;
         private boolean workerEnabled = true;
         private int waitTimeSeconds = 20;
         private int maxMessages = 10;
@@ -86,6 +87,14 @@ public class AwsProperties {
 
         public void setQueueUrl(String queueUrl) {
             this.queueUrl = queueUrl;
+        }
+
+        public String getDlqUrl() {
+            return dlqUrl;
+        }
+
+        public void setDlqUrl(String dlqUrl) {
+            this.dlqUrl = dlqUrl;
         }
 
         public boolean isWorkerEnabled() {

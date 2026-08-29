@@ -5,6 +5,8 @@ import dev.affan.agentopsgate.domain.DecisionOutcome;
 import dev.affan.agentopsgate.domain.DecisionService;
 import dev.affan.agentopsgate.domain.Effect;
 import dev.affan.agentopsgate.domain.EvaluateDecisionCommand;
+import dev.affan.agentopsgate.domain.IdempotencyService;
+import dev.affan.agentopsgate.domain.IdempotencyService.StoredResponse;
 import dev.affan.agentopsgate.domain.RiskTier;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -14,6 +16,8 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,21 +32,43 @@ import tools.jackson.databind.ObjectMapper;
 public class DecisionController {
 
     private final DecisionService decisionService;
+    private final IdempotencyService idempotencyService;
     private final ObjectMapper objectMapper;
 
-    public DecisionController(DecisionService decisionService, ObjectMapper objectMapper) {
+    public DecisionController(
+            DecisionService decisionService,
+            IdempotencyService idempotencyService,
+            ObjectMapper objectMapper) {
         this.decisionService = decisionService;
+        this.idempotencyService = idempotencyService;
         this.objectMapper = objectMapper;
     }
 
     @PostMapping
-    ResponseEntity<DecisionResponse> evaluate(@Valid @RequestBody EvaluateDecisionRequest request) {
+    ResponseEntity<String> evaluate(
+            @RequestAttribute(IdempotencyKeyFilter.REQUEST_ATTRIBUTE) String idempotencyKey,
+            @Valid @RequestBody EvaluateDecisionRequest request) {
+        JsonNode canonicalRequest = objectMapper.valueToTree(request);
+        StoredResponse stored = idempotencyService.execute(
+                idempotencyKey,
+                idempotencyService.requestHash(canonicalRequest),
+                () -> evaluateOnce(request));
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(stored.statusCode())
+                .contentType(MediaType.APPLICATION_JSON);
+        if (stored.statusCode() == 201) {
+            String id = objectMapper.readTree(stored.responseBody()).get("id").asString();
+            response.location(URI.create("/decisions/" + id));
+        }
+        return response.body(stored.responseBody());
+    }
+
+    private StoredResponse evaluateOnce(EvaluateDecisionRequest request) {
         DecisionOutcome outcome = decisionService.evaluate(request.toCommand());
         DecisionResponse response = DecisionResponse.from(
                 outcome.decision(),
                 outcome.approval() == null ? null : outcome.approval().getId(),
                 objectMapper);
-        return ResponseEntity.created(URI.create("/decisions/" + response.id())).body(response);
+        return new StoredResponse(201, objectMapper.writeValueAsString(response));
     }
 
     @GetMapping("/{id}")
