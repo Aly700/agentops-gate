@@ -25,7 +25,7 @@ export class DataStack extends cdk.Stack {
         passwordLength: 40,
       },
     });
-    this.databaseSecret.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.databaseSecret.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     this.apiKeySecret = new secretsmanager.Secret(this, 'ApiKeySecret', {
       description: 'AgentOps Gate static API credential',
@@ -36,7 +36,7 @@ export class DataStack extends cdk.Stack {
         passwordLength: 48,
       },
     });
-    this.apiKeySecret.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.apiKeySecret.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     this.database = new rds.DatabaseInstance(this, 'Database', {
       vpc: props.vpc,
@@ -54,7 +54,8 @@ export class DataStack extends cdk.Stack {
       storageEncrypted: true,
       backupRetention: cdk.Duration.days(1),
       deletionProtection: false,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      deleteAutomatedBackups: true,
     });
   }
 }
