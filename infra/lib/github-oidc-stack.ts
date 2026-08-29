@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 const GITHUB_OIDC_URL = 'https://token.actions.githubusercontent.com';
 const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
 const GITHUB_REPOSITORY_SUBJECT = 'repo:Aly700/agentops-gate:ref:refs/heads/main';
+const GITHUB_REPOSITORY_SUBJECT_WITH_IDS = GITHUB_REPOSITORY_SUBJECT.replace(/^repo:([^/]+)\/([^:]+):/, 'repo:$1@*/$2@*:');
 
 export class GithubOidcStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -28,7 +29,10 @@ export class GithubOidcStack extends cdk.Stack {
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
         StringEquals: {
           [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com',
-          [`${GITHUB_OIDC_HOST}:sub`]: GITHUB_REPOSITORY_SUBJECT,
+        },
+        // GitHub now issues sub claims with numeric ids (repo:OWNER@ID/REPO@ID:ref:...); accept both forms.
+        StringLike: {
+          [`${GITHUB_OIDC_HOST}:sub`]: [GITHUB_REPOSITORY_SUBJECT, GITHUB_REPOSITORY_SUBJECT_WITH_IDS],
         },
       }),
     });
