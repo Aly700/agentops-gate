@@ -161,7 +161,7 @@ class IdempotencyIntegrationTest {
                 """.formatted(policyId, agentId, toolName, arguments);
     }
 
-    private UUID responseId(MvcResult result) {
+    private UUID responseId(MvcResult result) throws Exception {
         return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asString());
     }
 }

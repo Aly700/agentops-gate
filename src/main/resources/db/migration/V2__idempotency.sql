@@ -1,6 +1,6 @@
 CREATE TABLE idempotency_records (
     key VARCHAR(200) PRIMARY KEY,
-    request_hash CHAR(64) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
     status_code INTEGER,
     response_body JSONB,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,

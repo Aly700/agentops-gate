@@ -45,6 +45,7 @@ import tools.jackson.databind.ObjectMapper;
         "agentops.api-key=integration-key",
         "agentops.aws.enabled=true",
         "agentops.aws.sqs.worker-enabled=false",
+        "agentops.outbox.relay-initial-delay=PT1H",
         "agentops.approval.ttl=PT0.1S"
 })
 @AutoConfigureMockMvc
@@ -56,6 +57,7 @@ class AwsTransportIntegrationTest extends LocalStackIntegrationTest {
     @Autowired private ApprovalMessageCodec codec;
     @Autowired private ApprovalRepository approvals;
     @Autowired private ApprovalExpiryWorker expiryWorker;
+    @Autowired private OutboxRelay outboxRelay;
     @Autowired private SqsClient sqsClient;
     @Autowired private S3Client s3Client;
 
@@ -204,6 +206,7 @@ class AwsTransportIntegrationTest extends LocalStackIntegrationTest {
 
         String response = mockMvc.perform(post("/decisions")
                         .header("X-API-Key", "integration-key")
+                        .header("Idempotency-Key", "aws-decision-" + UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"policyId":"%s","agentId":"agent-1","toolName":"fs.write",
@@ -212,6 +215,7 @@ class AwsTransportIntegrationTest extends LocalStackIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.effect").value("REQUIRE_APPROVAL"))
                 .andReturn().getResponse().getContentAsString();
+        outboxRelay.relayOnce();
         JsonNode body = objectMapper.readTree(response);
         return new CreatedApproval(
                 UUID.fromString(body.get("approvalId").asText()),

@@ -56,6 +56,7 @@ class ApiIntegrationTest {
 
         String decisionBody = mockMvc.perform(post("/decisions")
                         .header("X-API-Key", "integration-key")
+                        .header("Idempotency-Key", "api-decision-" + java.util.UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"policyId":"%s","agentId":"agent-1","toolName":"fs.write",

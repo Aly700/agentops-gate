@@ -5,6 +5,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -33,6 +34,7 @@ public final class ApprovalQueueWorker {
     private final int waitTimeSeconds;
     private final int maxMessages;
 
+    @Autowired
     public ApprovalQueueWorker(
             SqsClient sqsClient,
             ApprovalMessageCodec codec,

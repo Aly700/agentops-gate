@@ -147,6 +147,32 @@ localstack), jqwik, k6, CDK 2.267, CloudWatch.
 
 - [ ] `npx cdk synth` green; commit: `feat: metrics, dlq alarm, dashboard, runbook`.
 
+### Task 6b: Performance on 0.25 vCPU (evidence-driven)
+
+Baseline measured 2026-08-29 against the live task with `load/decisions.js`
+(ramp 5→50 rps, 80 s): 0 errors, ~21 rps sustained, latency median 3.1 s,
+p99 6.8 s, min 106 ms; ECS CPUUtilization 100% throughout, RDS CPU 5%,
+10 DB connections. The task is CPU-bound in the JVM; the database is idle.
+
+**Files:**
+- Modify: `Dockerfile` (JVM flags: `-XX:+UseSerialGC -XX:TieredStopAtLevel=1
+  -Xshare:auto -XX:MaxRAMPercentage=75`), `application.properties`
+  (Hikari `maximum-pool-size=5`, `minimum-idle=1`; structured console
+  logging kept but per-request logging filter reduced to WARN under a
+  `perf` profile flag), `domain/PolicyService` or a new `rules/PolicyCache`
+  (Caffeine is NOT in the cache — use a `ConcurrentHashMap` keyed by
+  policy id+version, invalidated on rule creation; policies are immutable
+  once evaluated), `domain/DecisionService` (one INSERT for the decision,
+  one for the audit row; no re-reads; no N+1 on rules).
+- Test: existing suites stay green; add `rules/PolicyCacheTest`.
+
+**Gate (lead):** rerun the same k6 script on the same task size; record
+before/after in `docs/evidence/`; then one run at 0.5 vCPU / 1 GB to show
+the cost/latency trade (`cdk deploy -c taskCpu=512 -c taskMemory=1024` —
+add these context knobs to the service stack with 256/512 defaults).
+
+- [ ] Commit: `perf: jvm flags for small cpu, pool sizing, policy cache`.
+
 ### Task 7: Live capture (lead)
 
 - [ ] Deploy with the new image; run the smoke walkthrough against the

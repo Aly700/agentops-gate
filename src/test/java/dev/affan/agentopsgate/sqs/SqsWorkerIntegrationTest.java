@@ -36,6 +36,7 @@ import software.amazon.awssdk.services.sqs.model.PurgeQueueRequest;
         "agentops.aws.sqs.worker-enabled=true",
         "agentops.aws.sqs.wait-time-seconds=1",
         "agentops.aws.sqs.poll-interval=PT0.1S",
+        "agentops.outbox.relay-initial-delay=PT1H",
         "agentops.approval.ttl=PT0.15S",
         "agentops.approval.expiry-interval=PT1H"
 })

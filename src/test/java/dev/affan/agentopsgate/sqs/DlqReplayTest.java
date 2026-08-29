@@ -1,20 +1,19 @@
 package dev.affan.agentopsgate.sqs;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 import dev.affan.agentopsgate.config.AwsProperties;
 import dev.affan.agentopsgate.domain.AuditEventType;
+import dev.affan.agentopsgate.domain.AuditRecord;
+import dev.affan.agentopsgate.domain.AuditRecordRepository;
 import dev.affan.agentopsgate.domain.AuditService;
 import java.lang.reflect.Proxy;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -25,6 +24,7 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
+import tools.jackson.databind.ObjectMapper;
 
 class DlqReplayTest {
 
@@ -37,7 +37,8 @@ class DlqReplayTest {
         AwsProperties properties = new AwsProperties();
         properties.getSqs().setQueueUrl("https://sqs.test/approvals");
         properties.getSqs().setDlqUrl("https://sqs.test/approvals-dlq");
-        AuditService audit = mock(AuditService.class);
+        AtomicReference<AuditRecord> auditRecord = new AtomicReference<>();
+        AuditService audit = auditService(auditRecord);
         DlqReplayService replay = new DlqReplayService(sqsClient, properties, audit);
 
         int replayed = replay.replay(5);
@@ -53,11 +54,28 @@ class DlqReplayTest {
             assertThat(request.queueUrl()).isEqualTo("https://sqs.test/approvals-dlq");
             assertThat(request.receiptHandle()).isEqualTo("receipt-1");
         });
-        verify(audit).append(
-                eq(AuditEventType.DLQ_REPLAYED),
-                eq("DLQ_REPLAY"),
-                any(UUID.class),
-                argThat((Map<String, ?> details) -> details.get("messageId").equals("message-1")));
+        assertThat(auditRecord.get().getEventType()).isEqualTo(AuditEventType.DLQ_REPLAYED);
+        assertThat(auditRecord.get().getAggregateType()).isEqualTo("DLQ_REPLAY");
+        assertThat(new ObjectMapper().readTree(auditRecord.get().getDetails()).get("messageId").asString())
+                .isEqualTo("message-1");
+    }
+
+    private static AuditService auditService(AtomicReference<AuditRecord> saved) {
+        AuditRecordRepository repository = (AuditRecordRepository) Proxy.newProxyInstance(
+                AuditRecordRepository.class.getClassLoader(),
+                new Class<?>[] {AuditRecordRepository.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("save")) {
+                        AuditRecord record = (AuditRecord) arguments[0];
+                        saved.set(record);
+                        return record;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        return new AuditService(
+                repository,
+                new ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-08-29T12:00:00Z"), ZoneOffset.UTC));
     }
 
     private static SqsClient sqsClient(
