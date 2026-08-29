@@ -106,11 +106,21 @@ The baseline was measured on 2026-08-29 against one Fargate task with 0.25 vCPU 
 
 The baseline indicates that the task was CPU-bound while RDS was idle. The tuned image uses Serial GC, first-tier compilation, class-data sharing, and a 75% heap limit; Hikari is capped at five connections with one idle connection; the policy cache removes policy/rule reads after warm-up; and the performance profile avoids per-request INFO logging.
 
-> **AFTER: to be filled by the lead**
->
-> - Tuned 0.25 vCPU / 0.5 GB: throughput ___, median ___, p99 ___, CPU ___, memory ___.
-> - 0.5 vCPU / 1 GB comparison: throughput ___, median ___, p99 ___, CPU ___, memory ___.
-> - Chaos capture: task stop/recovery ___; poison-message DLQ and replay ___; dashboard/S3 evidence links ___.
+| Measurement | Baseline 0.25 vCPU | Tuned 0.25 vCPU | Tuned 0.5 vCPU / 1 GB |
+|---|---:|---:|---:|
+| Errors | 0 / 1,736 | 0 / 2,774 | 0 / 2,796 |
+| Sustained throughput | 21 rps | 34.5 rps | 34.9 rps (profile maximum) |
+| Median latency | 3.13 s | 173 ms | 32 ms |
+| p90 / p95 | 4.92 s / 5.38 s | 409 ms / 567 ms | 106 ms / 120 ms |
+| p99 | 6.79 s | 1.09 s | 285 ms |
+| ECS CPU (per-minute avg/max) | 100% | 100% at peak | 47% / 49% |
+| ECS memory | — | ≈ 60% of 0.5 GB | 29% of 1 GB |
+| Extra cost | — | $0 | +$9.01 / month always-on |
+
+Same database, same load script, same workstation. The quarter-core task is at capacity under this
+profile (its p99 is queueing); the half-core has headroom. Full numbers and the reading are in
+[docs/evidence/perf.md](docs/evidence/perf.md). Chaos capture: see
+[docs/evidence/chaos.md](docs/evidence/chaos.md).
 
 Run the same load profile with:
 
