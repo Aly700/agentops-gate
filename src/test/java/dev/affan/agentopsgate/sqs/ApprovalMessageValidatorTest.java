@@ -19,7 +19,7 @@ class ApprovalMessageValidatorTest {
         UUID approvalId = UUID.randomUUID();
         UUID decisionId = UUID.randomUUID();
         Approval approval = Approval.pending(approvalId, decisionId, CREATED_AT, EXPIRES_AT);
-        ApprovalMessage message = new ApprovalMessage(approvalId, decisionId, EXPIRES_AT);
+        ApprovalMessage message = new ApprovalMessage(UUID.randomUUID(), approvalId, decisionId, EXPIRES_AT);
 
         assertThatCode(() -> validator.validate(message, approval)).doesNotThrowAnyException();
     }
@@ -28,7 +28,8 @@ class ApprovalMessageValidatorTest {
     void rejectsAMessageForAnotherDecision() {
         UUID approvalId = UUID.randomUUID();
         Approval approval = Approval.pending(approvalId, UUID.randomUUID(), CREATED_AT, EXPIRES_AT);
-        ApprovalMessage message = new ApprovalMessage(approvalId, UUID.randomUUID(), EXPIRES_AT);
+        ApprovalMessage message = new ApprovalMessage(
+                UUID.randomUUID(), approvalId, UUID.randomUUID(), EXPIRES_AT);
 
         assertThatThrownBy(() -> validator.validate(message, approval))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -40,7 +41,8 @@ class ApprovalMessageValidatorTest {
         UUID approvalId = UUID.randomUUID();
         UUID decisionId = UUID.randomUUID();
         Approval approval = Approval.pending(approvalId, decisionId, CREATED_AT, EXPIRES_AT);
-        ApprovalMessage message = new ApprovalMessage(approvalId, decisionId, EXPIRES_AT.plusSeconds(1));
+        ApprovalMessage message = new ApprovalMessage(
+                UUID.randomUUID(), approvalId, decisionId, EXPIRES_AT.plusSeconds(1));
 
         assertThatThrownBy(() -> validator.validate(message, approval))
                 .isInstanceOf(IllegalArgumentException.class)

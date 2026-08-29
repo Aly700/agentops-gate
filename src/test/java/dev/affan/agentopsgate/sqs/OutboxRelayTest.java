@@ -21,7 +21,7 @@ class OutboxRelayTest {
     @Test
     void publishesAndMarksPendingRowsSent() {
         ApprovalMessage approval = approvalMessage();
-        OutboxMessage row = pending(codec.encode(approval));
+        OutboxMessage row = pending(approval);
         AtomicReference<ApprovalMessage> published = new AtomicReference<>();
         SimpleMeterRegistry metrics = new SimpleMeterRegistry();
         OutboxRelay relay = relay(List.of(row), published::set, metrics);
@@ -39,7 +39,7 @@ class OutboxRelayTest {
     @Test
     void recordsFailureAndLeavesRowPendingForRetry() {
         ApprovalMessage approval = approvalMessage();
-        OutboxMessage row = pending(codec.encode(approval));
+        OutboxMessage row = pending(approval);
         SimpleMeterRegistry metrics = new SimpleMeterRegistry();
         OutboxRelay relay = relay(List.of(row), ignored -> {
             throw new IllegalStateException("SQS unavailable");
@@ -76,17 +76,18 @@ class OutboxRelayTest {
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
-    private OutboxMessage pending(String payload) {
+    private OutboxMessage pending(ApprovalMessage approval) {
         return OutboxMessage.pending(
-                UUID.randomUUID(),
+                approval.messageId(),
                 "APPROVAL",
                 UUID.randomUUID(),
-                payload,
+                codec.encode(approval),
                 NOW.minusSeconds(10));
     }
 
     private static ApprovalMessage approvalMessage() {
         return new ApprovalMessage(
+                UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 NOW.plusSeconds(1800));

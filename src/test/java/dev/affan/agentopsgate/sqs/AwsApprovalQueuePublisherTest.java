@@ -37,6 +37,7 @@ class AwsApprovalQueuePublisherTest {
         ApprovalMessage message = new ApprovalMessage(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                UUID.randomUUID(),
                 Instant.parse("2026-08-28T13:00:00Z"));
 
         publisher.publish(message);

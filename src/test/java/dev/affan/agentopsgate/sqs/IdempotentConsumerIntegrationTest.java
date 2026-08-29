@@ -30,6 +30,7 @@ import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.PurgeQueueRequest;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
@@ -52,6 +53,7 @@ class IdempotentConsumerIntegrationTest extends LocalStackIntegrationTest {
     @Autowired private AuditRecordRepository auditRecords;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private SqsClient sqsClient;
+    @Autowired private ApprovalMessageCodec codec;
 
     @BeforeEach
     void createsAndClearsQueue() {
@@ -63,23 +65,37 @@ class IdempotentConsumerIntegrationTest extends LocalStackIntegrationTest {
     }
 
     @Test
-    void duplicateMessageIdProducesOneStateChangeAndOneAuditRecord() throws Exception {
+    void duplicateLogicalMessageWithDifferentSqsIdsProducesOneStateChangeAndOneAuditRecord()
+            throws Exception {
         Policy policy = policies.createPolicy(new CreatePolicyCommand("consumer-" + UUID.randomUUID(), 1));
         policies.addRule(policy.getId(), new CreateRuleCommand(
                 "fs.*", null, null, RiskTier.HIGH, Effect.REQUIRE_APPROVAL, 10));
         DecisionOutcome outcome = decisions.evaluate(new EvaluateDecisionCommand(
                 policy.getId(), "agent-1", "fs.write", "{}", RiskTier.HIGH));
         relay.relayOnce();
-        Message message = sqsClient.receiveMessage(ReceiveMessageRequest.builder()
-                        .queueUrl(LOCALSTACK.getEndpoint() + "/000000000000/" + QUEUE_NAME)
+        String queueUrl = LOCALSTACK.getEndpoint() + "/000000000000/" + QUEUE_NAME;
+        Message firstDelivery = sqsClient.receiveMessage(ReceiveMessageRequest.builder()
+                        .queueUrl(queueUrl)
                         .waitTimeSeconds(5)
                         .maxNumberOfMessages(1)
                         .build())
                 .messages().getFirst();
+        ApprovalMessage logicalMessage = codec.decode(firstDelivery.body());
         Thread.sleep(Duration.ofMillis(200));
 
-        worker.processAndDelete(message);
-        worker.processAndDelete(message);
+        worker.processAndDelete(firstDelivery);
+        sqsClient.sendMessage(SendMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .messageBody(firstDelivery.body())
+                .build());
+        Message secondDelivery = sqsClient.receiveMessage(ReceiveMessageRequest.builder()
+                        .queueUrl(queueUrl)
+                        .waitTimeSeconds(5)
+                        .maxNumberOfMessages(1)
+                        .build())
+                .messages().getFirst();
+        assertThat(secondDelivery.messageId()).isNotEqualTo(firstDelivery.messageId());
+        worker.processAndDelete(secondDelivery);
 
         assertThat(approvals.findById(outcome.approval().getId()).orElseThrow().getStatus())
                 .isEqualTo(ApprovalStatus.EXPIRED);
@@ -90,6 +106,6 @@ class IdempotentConsumerIntegrationTest extends LocalStackIntegrationTest {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM processed_messages WHERE message_id = ?",
                 Integer.class,
-                message.messageId())).isEqualTo(1);
+                logicalMessage.messageId().toString())).isEqualTo(1);
     }
 }

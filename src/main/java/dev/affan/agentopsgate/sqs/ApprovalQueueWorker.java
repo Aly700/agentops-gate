@@ -55,7 +55,7 @@ public final class ApprovalQueueWorker {
             ApprovalMessageCodec codec,
             ApprovalMessageProcessor processor,
             AwsProperties properties) {
-        this(sqsClient, codec, (messageId, message) -> processor.process(message), properties);
+        this(sqsClient, codec, (MessageHandler) processor::process, properties);
     }
 
     private ApprovalQueueWorker(
@@ -109,7 +109,7 @@ public final class ApprovalQueueWorker {
 
     boolean processAndDelete(Message message) {
         try {
-            messageHandler.process(message.messageId(), codec.decode(message.body()));
+            messageHandler.process(codec.decode(message.body()));
             sqsClient.deleteMessage(DeleteMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .receiptHandle(message.receiptHandle())
@@ -130,14 +130,14 @@ public final class ApprovalQueueWorker {
             PlatformTransactionManager transactionManager,
             Clock clock) {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        return (messageId, message) -> transaction.executeWithoutResult(status -> {
+        return message -> transaction.executeWithoutResult(status -> {
             int inserted = jdbcTemplate.update(
                     """
                     INSERT INTO processed_messages (message_id, processed_at)
                     VALUES (?, ?)
                     ON CONFLICT (message_id) DO NOTHING
                     """,
-                    messageId,
+                    message.messageId().toString(),
                     Timestamp.from(clock.instant()));
             if (inserted == 1) {
                 processor.process(message);
@@ -147,6 +147,6 @@ public final class ApprovalQueueWorker {
 
     @FunctionalInterface
     private interface MessageHandler {
-        void process(String messageId, ApprovalMessage message);
+        void process(ApprovalMessage message);
     }
 }

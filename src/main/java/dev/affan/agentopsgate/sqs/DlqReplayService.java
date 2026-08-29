@@ -3,6 +3,7 @@ package dev.affan.agentopsgate.sqs;
 import dev.affan.agentopsgate.config.AwsProperties;
 import dev.affan.agentopsgate.domain.AuditEventType;
 import dev.affan.agentopsgate.domain.AuditService;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -50,17 +51,26 @@ public class DlqReplayService {
                     .queueUrl(queueUrl)
                     .messageBody(message.body())
                     .build());
+            UUID replayId = replayId(message);
+            auditService.appendOnce(
+                    replayId,
+                    AuditEventType.DLQ_REPLAYED,
+                    "DLQ_REPLAY",
+                    replayId,
+                    Map.of(
+                            "messageId", message.messageId(),
+                            "replayId", replayId));
             sqsClient.deleteMessage(DeleteMessageRequest.builder()
                     .queueUrl(dlqUrl)
                     .receiptHandle(message.receiptHandle())
                     .build());
-            auditService.append(
-                    AuditEventType.DLQ_REPLAYED,
-                    "DLQ_REPLAY",
-                    UUID.randomUUID(),
-                    Map.of("messageId", message.messageId()));
             replayed++;
         }
         return replayed;
+    }
+
+    private UUID replayId(Message message) {
+        return UUID.nameUUIDFromBytes(
+                ("sqs-dlq:" + message.messageId()).getBytes(StandardCharsets.UTF_8));
     }
 }

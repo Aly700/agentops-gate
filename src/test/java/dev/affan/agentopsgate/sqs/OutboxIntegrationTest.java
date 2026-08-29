@@ -44,6 +44,7 @@ class OutboxIntegrationTest extends LocalStackIntegrationTest {
     @Autowired private OutboxRelay relay;
     @Autowired private OutboxRepository outbox;
     @Autowired private SqsClient sqsClient;
+    @Autowired private ApprovalMessageCodec codec;
 
     @BeforeEach
     void createsAndClearsQueue() {
@@ -63,7 +64,10 @@ class OutboxIntegrationTest extends LocalStackIntegrationTest {
         decisions.evaluate(new EvaluateDecisionCommand(
                 policy.getId(), "agent-1", "fs.write", "{}", RiskTier.HIGH));
 
-        assertThat(outbox.findAll()).singleElement().satisfies(row -> assertThat(row.getSentAt()).isNull());
+        assertThat(outbox.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getSentAt()).isNull();
+            assertThat(codec.decode(row.getPayload()).messageId()).isEqualTo(row.getId());
+        });
         assertThat(relay.relayOnce()).isZero();
         assertThat(receive()).isEmpty();
         assertThat(relay.relayOnce()).isEqualTo(1);

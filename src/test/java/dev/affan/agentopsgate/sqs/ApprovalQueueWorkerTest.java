@@ -99,6 +99,7 @@ class ApprovalQueueWorkerTest {
         return new ApprovalMessage(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                UUID.randomUUID(),
                 Instant.parse("2026-08-28T13:00:00Z"));
     }
 

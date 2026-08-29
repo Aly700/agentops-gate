@@ -2,11 +2,11 @@
 
 AgentOps Gate is a small policy and approval service for AI tool calls. An agent proposes a call; the service evaluates an ordered policy and returns `ALLOW`, `DENY`, or `REQUIRE_APPROVAL`. It never executes the proposed tool itself.
 
-Approval-required decisions create a pending approval and an SQS message. Decisions and audit records are immutable, approval transitions are constrained, and audit records can be exported as date-partitioned JSON Lines objects in S3.
+Approval-required decisions create a pending approval and transactional outbox row; a scheduled relay publishes the row to SQS after commit. Decisions and audit records are immutable, approval transitions are constrained, and audit records can be exported as date-partitioned JSON Lines objects in S3.
 
 ## Status
 
-- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; 48 tests, Testcontainers-backed, green.
+- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; 58 tests span pure unit, PostgreSQL, and LocalStack coverage.
 - AWS: the CDK stacks synthesize; **not yet deployed** — the deploy pipeline and the cost figure below are exercised in the Day-2 step. Nothing in this README that depends on a live AWS environment should be read as verified until this line changes.
 
 ## Architecture
@@ -16,8 +16,9 @@ flowchart LR
     Agent[Agent or client] -->|X-API-Key + proposed call| API[Spring Boot API on ECS Fargate]
     API --> Engine[Ordered rules engine]
     Engine -->|first match; default DENY| API
-    API --> DB[(RDS PostgreSQL)]
-    API -->|approval message| SQS[SQS queue]
+    API -->|decision + approval + outbox| DB[(RDS PostgreSQL)]
+    DB --> Relay[Scheduled outbox relay in the same app]
+    Relay -->|approval message| SQS[SQS queue]
     SQS --> Worker[Scheduled SDK v2 long-poll worker in the same app]
     Worker --> DB
     API -->|nightly or admin-triggered JSONL| S3[S3 audit bucket]
@@ -29,24 +30,25 @@ The rules engine is a plain Java class. It sorts rules by ascending precedence, 
 
 The application uses AWS SDK v2 directly. Spring Cloud AWS 3.4 is compiled against a Spring Boot 3 `PropertyMapper` API that Boot 4 removed, so keeping it would leave a binary-incompatible runtime. Explicit `SqsClient` and `S3Client` beans mean one fewer abstraction and make region, credentials, endpoint overrides, and LocalStack path-style access visible in ordinary Spring configuration.
 
-The scheduled SQS worker long-polls for 20 seconds, processes each message, and deletes its receipt only after success. A failure leaves the message for visibility-timeout retry and eventual DLQ redrive. An approval message carries only the immutable approval ID, decision ID, and expiry; the worker compares all three fields with PostgreSQL, ignores duplicate delivery after a terminal transition, and expires a still-pending approval whose deadline has passed. The independent scheduled expiry sweep covers approvals even when a message is delayed or unavailable.
+The scheduled SQS worker long-polls for 20 seconds, processes each message, and deletes its receipt only after the database transaction commits. A failure leaves the message for visibility-timeout retry and eventual DLQ redrive. Every approval envelope carries the stable outbox UUID as its `messageId`; the `processed_messages` claim and approval state change share one transaction, so retries and DLQ replays remain no-ops even when SQS assigns a new transport ID. The independent scheduled expiry sweep covers approvals even when a message is delayed or unavailable.
 
-Queue publication is synchronous inside decision creation and completes before the database commit. A definite send failure rolls the transaction back; the rare inverse failure (SQS accepted the message but the database commit failed) produces an orphan that cannot match an approval, so the worker rejects it and SQS eventually redrives it to the DLQ. A transactional outbox would reduce those harmless orphan messages, but is deliberately outside this small service's domain.
+The decision, approval, audit rows, and outbox message commit together. The relay locks at most 50 pending rows with `FOR UPDATE SKIP LOCKED`; successful sends record `sent_at`, while failures retain the row with an attempt count and error for retry. Publishing is therefore at-least-once, with duplicate effects removed by the consumer transaction.
 
 ## API
 
-All API routes except `/actuator/health` require `X-API-Key`.
+All API routes except `/actuator/health` require `X-API-Key`. `POST /decisions` also requires a non-blank `Idempotency-Key`; replaying the same canonical JSON body returns the stored response with 200, while reusing the key for a different body returns 409.
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/policies` | Create a versioned policy |
 | `POST` | `/policies/{id}/rules` | Append a rule at a precedence |
-| `POST` | `/decisions` | Evaluate and persist a proposed call |
+| `POST` | `/decisions` | Evaluate and persist a proposed call; requires `Idempotency-Key` |
 | `GET` | `/decisions/{id}` | Read an immutable decision |
 | `POST` | `/approvals/{id}/approve` | Approve a pending approval |
 | `POST` | `/approvals/{id}/deny` | Deny a pending approval |
 | `GET` | `/audit?from=&to=` | Query the append-only audit stream |
 | `POST` | `/admin/exports/audit?date=` | Export one UTC day to S3 immediately |
+| `POST` | `/admin/dlq/replay?limit=` | Move up to 10 DLQ messages back to the approval queue |
 | `GET` | `/actuator/health` | Container health endpoint |
 
 Invalid input returns RFC 9457 `application/problem+json`. Missing or incorrect API keys return 401; missing resources return 404; duplicate resources and invalid approval transitions return 409.
@@ -100,18 +102,29 @@ curl --fail-with-body -X POST "http://localhost:8080/policies/$POLICY_ID/rules" 
 Evaluate one call for each outcome. The first response is `ALLOW`, the second is `DENY`, and the third is `REQUIRE_APPROVAL`:
 
 ```bash
+export ALLOW_IDEMPOTENCY_KEY="allow-$(date +%s)"
 curl --fail-with-body -X POST http://localhost:8080/decisions \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H "Idempotency-Key: $ALLOW_IDEMPOTENCY_KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"browser.read\",\"arguments\":{\"url\":\"https://example.test\"},\"riskTier\":\"LOW\"}"
+
+# Same key and canonical body: HTTP 200 with the identical stored decision.
+curl --fail-with-body -X POST http://localhost:8080/decisions \
+  -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H "Idempotency-Key: $ALLOW_IDEMPOTENCY_KEY" \
   -H 'Content-Type: application/json' \
   -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"browser.read\",\"arguments\":{\"url\":\"https://example.test\"},\"riskTier\":\"LOW\"}"
 
 curl --fail-with-body -X POST http://localhost:8080/decisions \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H "Idempotency-Key: deny-$(date +%s)" \
   -H 'Content-Type: application/json' \
   -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"shell.exec\",\"arguments\":{\"command\":\"false\"},\"riskTier\":\"CRITICAL\"}"
 
 curl --fail-with-body -X POST http://localhost:8080/decisions \
   -H "X-API-Key: $AGENTOPS_API_KEY" \
+  -H "Idempotency-Key: approval-$(date +%s)" \
   -H 'Content-Type: application/json' \
   -d "{\"policyId\":\"$POLICY_ID\",\"agentId\":\"demo-agent\",\"toolName\":\"fs.write\",\"arguments\":{\"path\":\"/sandbox/report.txt\"},\"riskTier\":\"HIGH\"}"
 
@@ -153,6 +166,7 @@ An export is idempotent at the object-key level: every run for a UTC day refresh
 | `AGENTOPS_AWS_ENABLED` | production | Enables AWS transport adapters |
 | `AWS_REGION` | production | Region bound into both explicit SDK clients |
 | `APPROVAL_QUEUE_URL` | production/local | Exact SQS queue URL |
+| `APPROVAL_DLQ_URL` | production/local | Exact approval DLQ URL used by admin replay |
 | `AUDIT_BUCKET` | production/local | Exact audit bucket name |
 | `AWS_ENDPOINT_URL` | local only | LocalStack endpoint override |
 | `APPROVAL_TTL` | no | Pending lifetime; default `PT30M` |
@@ -160,6 +174,8 @@ An export is idempotent at the object-key level: every run for a UTC day refresh
 | `APPROVAL_WORKER_ENABLED` | no | Enables the scheduled SQS consumer; default `true` |
 | `SQS_WAIT_TIME_SECONDS` | no | SQS receive long-poll duration; default `20` |
 | `SQS_POLL_INTERVAL` | no | Delay between completed polls; default `PT1S` |
+| `IDEMPOTENCY_TTL` | no | Decision-key retention; default `PT24H` |
+| `OUTBOX_RELAY_INTERVAL` | no | Delay between outbox batches; default `PT1S` |
 | `AUDIT_EXPORT_ENABLED` | no | Enables nightly export |
 
 Production database credentials and the independently generated API key are injected from separate Secrets Manager values by the ECS task definition. AWS clients use `AWS_REGION` and the task-role credential chain; static AWS credentials are only used by the `local` profile.

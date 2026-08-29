@@ -14,6 +14,7 @@ class ApprovalMessageCodecTest {
     @Test
     void roundTripsAnApprovalMessage() {
         ApprovalMessage message = new ApprovalMessage(
+                UUID.fromString("9ef0cc83-411f-4b24-a39a-7c8db52ae2d0"),
                 UUID.fromString("16c9f884-412c-4dd9-97e3-8d091319ec41"),
                 UUID.fromString("9dac1207-2588-4c61-9700-0208fb41cc63"),
                 Instant.parse("2026-08-28T13:00:00Z"));
@@ -28,10 +29,11 @@ class ApprovalMessageCodecTest {
         ApprovalMessage message = new ApprovalMessage(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                UUID.randomUUID(),
                 Instant.parse("2026-08-28T13:00:00Z"));
 
         String json = codec.encode(message);
 
-        assertThat(json).contains("\"approvalId\"", "\"decisionId\"", "\"expiresAt\"");
+        assertThat(json).contains("\"messageId\"", "\"approvalId\"", "\"decisionId\"", "\"expiresAt\"");
     }
 }

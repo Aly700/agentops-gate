@@ -1,5 +1,6 @@
 package dev.affan.agentopsgate.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -7,6 +8,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import dev.affan.agentopsgate.TestcontainersConfiguration;
+import dev.affan.agentopsgate.domain.Approval;
+import dev.affan.agentopsgate.domain.ApprovalRepository;
+import dev.affan.agentopsgate.domain.ApprovalStatus;
+import dev.affan.agentopsgate.domain.AuditEventType;
+import dev.affan.agentopsgate.domain.AuditRecordRepository;
+import dev.affan.agentopsgate.sqs.ApprovalMessageCodec;
+import dev.affan.agentopsgate.sqs.OutboxRepository;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +24,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers(disabledWithoutDocker = true)
 @Import(TestcontainersConfiguration.class)
@@ -27,6 +37,12 @@ class ApiIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired private ObjectMapper objectMapper;
+    @Autowired private ApprovalRepository approvals;
+    @Autowired private AuditRecordRepository auditRecords;
+    @Autowired private OutboxRepository outbox;
+    @Autowired private ApprovalMessageCodec approvalMessageCodec;
 
     @Test
     void requiresAnApiKey() throws Exception {
@@ -70,6 +86,20 @@ class ApiIntegrationTest {
 
         String approvalId = jsonString(decisionBody, "approvalId");
         String decisionId = jsonString(decisionBody, "id");
+        UUID approvalUuid = UUID.fromString(approvalId);
+        Approval committedApproval = approvals.findById(approvalUuid).orElseThrow();
+        assertThat(committedApproval.getStatus()).isEqualTo(ApprovalStatus.PENDING);
+        assertThat(committedApproval.getDecisionId()).isEqualTo(UUID.fromString(decisionId));
+        assertThat(committedApproval.getExpiresAt()).isAfter(committedApproval.getCreatedAt());
+        assertThat(outbox.findAll())
+                .filteredOn(row -> row.getAggregateId().equals(approvalUuid))
+                .singleElement()
+                .satisfies(row -> assertThat(approvalMessageCodec.decode(row.getPayload()).approvalId())
+                        .isEqualTo(approvalUuid));
+        assertThat(auditRecords.findAll())
+                .filteredOn(record -> record.getAggregateId().equals(approvalUuid))
+                .filteredOn(record -> record.getEventType() == AuditEventType.APPROVAL_CREATED)
+                .hasSize(1);
 
         mockMvc.perform(post("/approvals/{id}/approve", approvalId)
                         .header("X-API-Key", "integration-key")
@@ -116,9 +146,7 @@ class ApiIntegrationTest {
                 .andExpect(status().isCreated());
     }
 
-    private static String jsonString(String json, String field) {
-        String marker = "\"" + field + "\":\"";
-        int start = json.indexOf(marker) + marker.length();
-        return json.substring(start, json.indexOf('"', start));
+    private String jsonString(String json, String field) {
+        return objectMapper.readTree(json).get(field).asString();
     }
 }

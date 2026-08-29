@@ -38,6 +38,22 @@ public class AuditService {
         return auditRecords.save(record);
     }
 
+    @Transactional
+    public AuditRecord appendOnce(
+            UUID recordId,
+            AuditEventType eventType,
+            String aggregateType,
+            UUID aggregateId,
+            Map<String, ?> details) {
+        return auditRecords.findById(recordId).orElseGet(() -> auditRecords.save(AuditRecord.create(
+                recordId,
+                eventType,
+                aggregateType,
+                aggregateId,
+                clock.instant(),
+                objectMapper.writeValueAsString(details))));
+    }
+
     @Transactional(readOnly = true)
     public List<AuditRecord> query(Instant from, Instant to) {
         if (from == null || to == null || !from.isBefore(to)) {

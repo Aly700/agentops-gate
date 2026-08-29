@@ -1,5 +1,6 @@
 package dev.affan.agentopsgate.domain;
 
+import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,17 +23,20 @@ public class IdempotencyService {
     private static final int REPLAY_STATUS = 200;
 
     private final IdempotencyRecordRepository records;
+    private final EntityManager entityManager;
     private final Clock clock;
     private final Duration ttl;
 
     public IdempotencyService(
             IdempotencyRecordRepository records,
+            EntityManager entityManager,
             Clock clock,
             @Value("${agentops.idempotency.ttl:PT24H}") Duration ttl) {
         if (ttl.isZero() || ttl.isNegative()) {
             throw new IllegalArgumentException("agentops.idempotency.ttl must be positive");
         }
         this.records = records;
+        this.entityManager = entityManager;
         this.clock = clock;
         this.ttl = ttl;
     }
@@ -62,7 +66,9 @@ public class IdempotencyService {
 
         StoredResponse response = Objects.requireNonNull(operation.get(), "operation response");
         record.complete(response.statusCode(), response.responseBody());
-        return response;
+        entityManager.flush();
+        entityManager.refresh(record);
+        return new StoredResponse(response.statusCode(), record.getResponseBody());
     }
 
     public String requestHash(JsonNode body) {

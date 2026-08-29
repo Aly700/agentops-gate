@@ -107,10 +107,11 @@ public class DecisionService {
                 Map.of(
                         "decisionId", decision.getId(),
                         "expiresAt", approval.getExpiresAt()));
+        UUID messageId = UUID.randomUUID();
         ApprovalMessage message = new ApprovalMessage(
-                approval.getId(), decision.getId(), approval.getExpiresAt());
+                messageId, approval.getId(), decision.getId(), approval.getExpiresAt());
         outbox.save(OutboxMessage.pending(
-                UUID.randomUUID(),
+                messageId,
                 "APPROVAL",
                 approval.getId(),
                 approvalMessageCodec.encode(message),

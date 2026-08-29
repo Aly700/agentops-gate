@@ -70,6 +70,7 @@ class SqsWorkerIntegrationTest extends LocalStackIntegrationTest {
         assertThat(outcome.approval()).isNotNull();
         Thread.sleep(Duration.ofMillis(200));
         ApprovalMessage duplicate = new ApprovalMessage(
+                UUID.randomUUID(),
                 outcome.approval().getId(),
                 outcome.decision().getId(),
                 outcome.approval().getExpiresAt());
