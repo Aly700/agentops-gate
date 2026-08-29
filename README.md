@@ -1,38 +1,195 @@
 # AgentOps Gate
 
-AgentOps Gate is a small policy and approval service for AI tool calls. An agent proposes a call; the service evaluates an ordered policy and returns `ALLOW`, `DENY`, or `REQUIRE_APPROVAL`. It never executes the proposed tool itself.
-
-Approval-required decisions create a pending approval and transactional outbox row; a scheduled relay publishes the row to SQS after commit. Decisions and audit records are immutable, approval transitions are constrained, and audit records can be exported as date-partitioned JSON Lines objects in S3.
+AgentOps Gate evaluates proposed AI tool calls against an ordered policy. It returns `ALLOW`, `DENY`, or `REQUIRE_APPROVAL`; it does not execute the tool call. Approval-required decisions create durable human-review work, and every state change is recorded in an append-only audit stream.
 
 ## Status
 
-- Local: `docker compose up` runs the full flow (policy → rules → three decisions → approval over SQS → audit → S3 export) against Postgres and LocalStack; the test suite spans pure unit, PostgreSQL, and LocalStack coverage.
-- AWS: the CDK stacks synthesize; **not yet deployed** — the deploy pipeline and the cost figure below are exercised in the Day-2 step. Nothing in this README that depends on a live AWS environment should be read as verified until this line changes.
+As of 2026-08-29:
+
+- The lead's Docker run at commit `4dd7b9d` passed all 70 tests, including PostgreSQL and LocalStack integration tests.
+- The first AWS deployment and API-to-S3 walkthrough were completed by hand; the results are in [the live smoke record](docs/evidence/2026-08-29-aws-smoke.md).
+- The tuned 0.25 vCPU run, 0.5 vCPU comparison, and chaos captures are still being recorded by the lead. Their result fields remain blank below.
+- The GitHub Actions deployment is defined but has not been exercised because the repository is not public yet.
+
+## Problem
+
+An agent can propose a tool call faster than a human can review one. The service needs to answer low-risk calls immediately, deny disallowed calls, and turn higher-risk calls into durable approvals without losing work across database, queue, process, or network failures.
+
+The domain stays small: versioned policies contain ordered rules; a rule can match a tool-name glob, argument regex, agent ID, and risk tier. The first complete match wins and no match means `DENY`. Decisions are immutable. Approvals move from `PENDING` to `APPROVED`, `DENIED`, or `EXPIRED`.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Agent[Agent or client] -->|X-API-Key + proposed call| API[Spring Boot API on ECS Fargate]
-    API --> Engine[Ordered rules engine]
-    Engine -->|first match; default DENY| API
-    API -->|decision + approval + outbox| DB[(RDS PostgreSQL)]
-    DB --> Relay[Scheduled outbox relay in the same app]
-    Relay -->|approval message| SQS[SQS queue]
-    SQS --> Worker[Scheduled SDK v2 long-poll worker in the same app]
-    Worker --> DB
-    API -->|nightly or admin-triggered JSONL| S3[S3 audit bucket]
-    API --> Logs[CloudWatch Logs and metrics]
-    SQS --> DLQ[SQS DLQ]
+    Client[Agent or client] -->|X-API-Key + Idempotency-Key| API[Spring Boot API<br/>ECS Fargate]
+    API --> Idem[Idempotency record]
+    API --> Cache[Policy cache]
+    Cache --> Rules[Ordered rules engine]
+    API -->|one transaction:<br/>decision + audit<br/>+ approval + outbox when required| DB[(PostgreSQL)]
+    DB --> Relay[Scheduled outbox relay]
+    Relay -->|stable messageId| Queue[SQS approval queue]
+    Queue --> Worker[SDK v2 long-poll worker]
+    Worker -->|processed_messages + notified_at<br/>in one transaction| DB
+    Queue -->|five failed receives| DLQ[SQS DLQ]
+    DLQ -->|audited admin replay| Queue
+    Reviewer[Human reviewer] -->|approve or deny| API
+    Expiry[Scheduled expiry sweep] --> DB
+    DB --> Export[Scheduled or admin export]
+    Export -->|audit/dt=YYYY-MM-DD/*.jsonl| S3[S3]
+    API --> Metrics[CloudWatch logs, metrics,<br/>alarms, dashboard]
 ```
 
-The rules engine is a plain Java class. It sorts rules by ascending precedence, stops at the first complete match, and defaults to `DENY`. Matchers are optional except for the tool-name glob; supported dimensions are tool glob (`fs.*` and `*`), argument regex, exact agent ID, and risk tier.
+The HTTP API, outbox relay, SQS worker, expiry sweep, and export scheduler run in one image. Compose runs that image with PostgreSQL and LocalStack; Fargate runs it with RDS, SQS, and S3. The rules engine is plain Java. The policy cache is keyed by policy ID and rule-set version and is invalidated when a rule is added.
 
-The application uses AWS SDK v2 directly. Spring Cloud AWS 3.4 is compiled against a Spring Boot 3 `PropertyMapper` API that Boot 4 removed, so keeping it would leave a binary-incompatible runtime. Explicit `SqsClient` and `S3Client` beans mean one fewer abstraction and make region, credentials, endpoint overrides, and LocalStack path-style access visible in ordinary Spring configuration.
+### Why each service
 
-The scheduled SQS worker long-polls for 20 seconds, processes each message, and deletes its receipt only after the database transaction commits. A failure leaves the message for visibility-timeout retry and eventual DLQ redrive. Every approval envelope carries the stable outbox UUID as its `messageId`; the `processed_messages` claim and approval state change share one transaction, so retries and DLQ replays remain no-ops even when SQS assigns a new transport ID. The independent scheduled expiry sweep covers approvals even when a message is delayed or unavailable.
+| Service | Why | Interview line |
+|---|---|---|
+| Spring Boot 4, Java 21 | Web, Data JPA, Validation, and Actuator in one service | “The API and background work use the same transaction and configuration model.” |
+| RDS PostgreSQL + Flyway | Rules, decisions, approvals, idempotency records, outbox rows, and audit records are relational | “Schema changes are versioned and replayable.” |
+| SQS + DLQ | Approval work is asynchronous and must survive worker failure | “The API does not wait for a human.” |
+| S3 export | Audit consumers can read date-partitioned JSONL without querying the production database | “Batch export separates audit reads from request traffic.” |
+| IAM task role | SDK access is scoped to the approval queues, audit prefix, metrics namespace, and API-key secret | “The container has no static AWS key.” |
+| Secrets Manager | Database credentials and the API key are injected at runtime | “Secrets are absent from the image and repository.” |
+| ECS Fargate | The long-poll worker and schedulers need a resident process | “The same image runs in Compose and Fargate.” |
+| CloudWatch | Stores logs and application/ECS metrics; alarms on 5xx responses and DLQ depth | “The runbook starts from an alarm and names the recovery command.” |
+| CDK (TypeScript) | Defines seven independently deployable stacks | “The infrastructure can be synthesized before deployment.” |
+| GitHub Actions + OIDC | Builds, tests, pushes to ECR, and deploys from `main` without static keys | “Trust is scoped to one repository and branch.” |
+| AWS SDK v2 directly | Spring Cloud AWS 3.4 fails under Boot 4.1 at runtime | “Explicit clients avoid a known binary incompatibility.” |
 
-The decision, approval, audit rows, and outbox message commit together. The relay locks at most 50 pending rows with `FOR UPDATE SKIP LOCKED`; successful sends record `sent_at`, while failures retain the row with an attempt count and error for retry. Publishing is therefore at-least-once, with duplicate effects removed by the consumer transaction.
+The design decisions are recorded in [docs/adr](docs/adr/).
+
+## Correctness
+
+The deterministic simulation drives the real `DecisionService`, `ApprovalService`, `OutboxRelay`, `ApprovalQueueWorker`, and expiry logic through in-memory repository ports, a seeded virtual clock, and a fault-injecting event bus. It checks these invariants after every step:
+
+1. Every `REQUIRE_APPROVAL` decision has exactly one approval.
+2. Every approval reaches `APPROVED`, `DENIED`, or `EXPIRED` after the simulation quiesces.
+3. Replaying an idempotent decision request never creates a second decision.
+4. The audit log remains append-only and totally ordered per aggregate.
+5. Every outbox row is eventually sent and produces one effect even when its message is published twice.
+
+A fresh 2,000-seed run completed 251,759 steps and created 6,000 decisions. It finished with 2,000 approvals in each terminal state. The bus injected 2,207 duplicates, 2,087 reorders, 2,086 delays, 1,679 drop-then-redeliver events, 970 crashes before commit, and 1,010 crashes after commit; 2,207 duplicate deliveries reached the worker. The simulator reported 1,940 ms of simulation time and persisted the same totals to `target/sim-coverage.json`. `-Dsim.seed=<n>` reproduces a failure with its event trace.
+
+The rules engine also has four jqwik properties with 1,000 trials each: generated policies agree with an independent reference evaluator, unmatched calls default to deny, a lower-priority rule cannot change an existing match, and glob matching agrees with a separate regex translation. Surefire writes `TEST-dev.affan.agentopsgate.rules.RulesEngineProperties.xml`, so these properties run in the default suite.
+
+The lead's Docker suite passed 70/70 tests. Its Testcontainers coverage uses PostgreSQL for migrations, transactions, API idempotency, and persistence, and LocalStack for SQS publishing, outbox retry, duplicate delivery, DLQ replay, approval expiry, S3 export, and JSONL read-back.
+
+## Exactly-once plumbing
+
+SQS delivery and outbox publishing are at least once. The application makes their effects idempotent at each boundary:
+
+| Mechanism | Protects against | Result |
+|---|---|---|
+| `Idempotency-Key` on `POST /decisions` | Client timeout and request retry | The same key and canonical body return the stored decision; the same key with a different body returns 409. |
+| Decision transaction | Partial database state | Decision, audit, pending approval, and outbox row commit together when approval is required. |
+| Transactional outbox | Decision commit followed by failed SQS publish | The durable row stays pending until a relay send succeeds. |
+| Stable outbox UUID in the message | SQS transport IDs changing during replay | The logical work keeps one identity across retries and DLQ replay. |
+| `processed_messages` transaction | Duplicate SQS delivery or relay retry | The message claim and approval notification effect commit together; duplicates are deleted without a second effect. |
+| DLQ and audited replay endpoint | Poison messages and repeated worker failure | SQS isolates a message after five receives; an operator fixes the cause and moves up to ten messages back through the API. |
+
+The relay claims batches of 50 with `FOR UPDATE SKIP LOCKED`. It records `sent_at` after a successful send and retains attempt/error data after failure. The worker long-polls for up to 20 seconds and deletes a receipt only after processing succeeds. The independent expiry sweep prevents a delayed or unavailable queue from keeping an approval pending forever.
+
+## Performance
+
+The baseline was measured on 2026-08-29 against one Fargate task with 0.25 vCPU and 0.5 GB, using `load/decisions.js` for an 80-second 5-to-50 requests/second ramp.
+
+| Measurement | Baseline |
+|---|---:|
+| Errors | 0 |
+| Sustained throughput | about 21 requests/second |
+| Median latency | 3.1 seconds |
+| p99 latency | 6.8 seconds |
+| ECS CPU utilization | 100% throughout |
+| RDS CPU utilization | 5% |
+| Database connections | 10 |
+
+The baseline indicates that the task was CPU-bound while RDS was idle. The tuned image uses Serial GC, first-tier compilation, class-data sharing, and a 75% heap limit; Hikari is capped at five connections with one idle connection; the policy cache removes policy/rule reads after warm-up; and the performance profile avoids per-request INFO logging.
+
+> **AFTER: to be filled by the lead**
+>
+> - Tuned 0.25 vCPU / 0.5 GB: throughput ___, median ___, p99 ___, CPU ___, memory ___.
+> - 0.5 vCPU / 1 GB comparison: throughput ___, median ___, p99 ___, CPU ___, memory ___.
+> - Chaos capture: task stop/recovery ___; poison-message DLQ and replay ___; dashboard/S3 evidence links ___.
+
+Run the same load profile with:
+
+```bash
+BASE_URL='http://<task-public-ip>:8080' API_KEY='<api-key>' POLICY_ID='<policy-id>' \
+  k6 run load/decisions.js
+```
+
+The CDK comparison changes only task size:
+
+```bash
+cd infra
+npx cdk deploy AgentOpsServiceStack --require-approval never \
+  -c imageTag='<image-tag>' -c taskCpu=512 -c taskMemory=1024
+```
+
+## Operations
+
+CloudWatch export is enabled only when both `agentops.aws.enabled=true` and `agentops.metrics.cloudwatch.enabled=true`; local and test profiles disable it. The `AgentOpsGate` namespace contains decision counts by effect, outbox backlog/sent/failed, worker processed/duplicate counts, HTTP response classes, and `http.server.requests` latency histograms.
+
+The CDK service stack creates:
+
+- an alarm for at least five HTTP 5xx responses in five minutes;
+- an alarm when the approval DLQ has at least one visible message;
+- a dashboard for p99 latency, request rate, 5xx count, outbox backlog, DLQ depth, and ECS CPU/memory.
+
+Recovery steps and the audited replay command are in the [operations runbook](docs/runbook.md).
+
+## Cost (us-east-1, on-demand, AWS Pricing API 2026-08-29)
+
+| Resource | Unit price | Always-on / month (730 h) | Per day while deployed |
+|---|---:|---:|---:|
+| ECS Fargate task, 0.25 vCPU + 0.5 GB (Linux/x86) | $0.040478/vCPU-h + $0.004446/GB-h = $0.01234/h | $9.01 | $0.30 |
+| RDS db.t4g.micro, PostgreSQL, Single-AZ | $0.016/h | $11.68 | $0.38 |
+| RDS storage, 20 GB gp3 | $0.115/GB-mo | $2.30 | $0.08 |
+| Secrets Manager, 2 secrets | $0.40/secret-mo | $0.80 | $0.03 |
+| SQS, S3, CloudWatch, ECR at demo volumes | metered, ~free-tier scale | ≈ $0.50 | ≈ $0.02 |
+| **Total** | | **≈ $24.3** | **≈ $0.80** |
+
+The $10/month ceiling therefore holds only under the project's operating rule:
+deploy for capture and demos, `cdk destroy --all` between (≈ 12 deployed
+days/month before the Budgets alarm fires). A NAT gateway alone would add
+$32/month, an ALB $16/month — both deliberately absent.
+
+## Deployment
+
+The CDK app defines seven stacks: GitHub OIDC, Network, Data, Queue, Bucket, Service, and Budget. The OIDC stack is independent; the service stack consumes the other application resources.
+
+The VPC has two Availability Zones, public subnets only, and no NAT gateway. Fargate tasks receive public IPs to reach ECR, Secrets Manager, SQS, and S3 directly. RDS is also placed in those public subnets, but `publiclyAccessible` is false and its security group accepts port 5432 only from the task security group. Network access is controlled by that security group, and the database has no public endpoint; subnet placement is not what keeps it private.
+
+The first AWS deploy was run by hand from a workstation, as recorded in [the smoke evidence](docs/evidence/2026-08-29-aws-smoke.md). The GitHub Actions workflow has not been exercised; it remains pending until the repository is public.
+
+Synthesize and deploy with an existing ECR image tag:
+
+```bash
+cd infra
+npx tsc --noEmit
+npx cdk synth
+npx cdk deploy --all --require-approval never \
+  -c imageTag='<existing-ecr-image-tag>' \
+  -c budgetEmail='alerts@example.test' \
+  -c taskCpu=256 -c taskMemory=512
+```
+
+### One-time GitHub OIDC bootstrap
+
+Bootstrap CDK, deploy the independent OIDC stack, and copy its role output into the repository variable:
+
+```bash
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+cd infra
+npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/us-east-1"
+npx cdk deploy AgentOpsGithubOidcStack --require-approval never
+export AWS_ROLE_ARN="$(aws cloudformation describe-stacks --stack-name AgentOpsGithubOidcStack --query \"Stacks[0].Outputs[?OutputKey=='GithubDeployRoleArn'].OutputValue\" --output text)"
+cd ..
+gh variable set AWS_ROLE_ARN --body "$AWS_ROLE_ARN"
+```
+
+If the account already has GitHub's provider, add `-c oidcProviderArn="arn:aws:iam::$AWS_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"` to the deploy command. OIDC provides short-lived credentials with trust scoped to `repo:Aly700/agentops-gate` on `main`; there are no static AWS keys to rotate or expose.
 
 ## API
 
@@ -48,14 +205,14 @@ All API routes except `/actuator/health` require `X-API-Key`. `POST /decisions` 
 | `POST` | `/approvals/{id}/deny` | Deny a pending approval |
 | `GET` | `/audit?from=&to=` | Query the append-only audit stream |
 | `POST` | `/admin/exports/audit?date=` | Export one UTC day to S3 immediately |
-| `POST` | `/admin/dlq/replay?limit=` | Move up to 10 DLQ messages back to the approval queue |
+| `POST` | `/admin/dlq/replay?limit=` | Move up to ten DLQ messages back to the approval queue |
 | `GET` | `/actuator/health` | Container health endpoint |
 
 Invalid input returns RFC 9457 `application/problem+json`. Missing or incorrect API keys return 401; missing resources return 404; duplicate resources and invalid approval transitions return 409.
 
 ## Run locally
 
-Prerequisites are Docker with Compose and three local-only environment variables. Secrets are intentionally not stored in this repository.
+Prerequisites are Docker with Compose and three local-only environment variables. Secrets are not stored in this repository.
 
 ```bash
 export POSTGRES_USER=agentops
@@ -67,7 +224,7 @@ curl --fail http://localhost:8080/actuator/health
 
 LocalStack initializes `agentops-gate-approvals`, its DLQ, and `agentops-gate-audit` in `us-east-1`. The `local` Spring profile uses its endpoint with dummy LocalStack credentials and path-style S3 access.
 
-### Curl walkthrough
+### Compose walkthrough
 
 Create a policy and copy its `id` into `POLICY_ID`:
 
@@ -131,7 +288,7 @@ curl --fail-with-body -X POST http://localhost:8080/decisions \
 export APPROVAL_ID='paste-approval-id'
 ```
 
-Approve the pending call, inspect the complete trail, export the current UTC day, and list the resulting object:
+Approve the pending call, inspect the audit trail, export the current UTC day, list the object, and exercise the admin replay endpoint:
 
 ```bash
 curl --fail-with-body -X POST "http://localhost:8080/approvals/$APPROVAL_ID/approve" \
@@ -149,11 +306,15 @@ curl --fail-with-body -X POST "http://localhost:8080/admin/exports/audit?date=$E
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 \
   aws --endpoint-url http://localhost:4566 s3 ls \
   "s3://agentops-gate-audit/audit/dt=$EXPORT_DATE/"
+
+# With an empty DLQ this returns {"replayed":0}; repeated empty calls have no effect.
+curl --fail-with-body -X POST 'http://localhost:8080/admin/dlq/replay?limit=10' \
+  -H "X-API-Key: $AGENTOPS_API_KEY"
 ```
 
-The LocalStack queue has a five-receive redrive policy. Worker failures leave messages undeleted; after five receives SQS moves the poison message to `agentops-gate-approvals-dlq` for inspection rather than dropping it.
+The LocalStack queue has a five-receive redrive policy. Worker failures leave messages undeleted; after five receives SQS moves the message to `agentops-gate-approvals-dlq` for inspection.
 
-An export is idempotent at the object-key level: every run for a UTC day refreshes the same `audit/dt=YYYY-MM-DD/YYYYMMDDT000000Z.jsonl` key. That lets a demo-time export of the current day pick up later audit events; the production bucket's versioning retains earlier object versions for recovery.
+An export is idempotent at the object-key level: every run for a UTC day refreshes `audit/dt=YYYY-MM-DD/YYYYMMDDT000000Z.jsonl`. The production bucket's versioning retains earlier object versions.
 
 ## Configuration
 
@@ -164,8 +325,8 @@ An export is idempotent at the object-key level: every run for a UTC day refresh
 | `DB_PASSWORD` | yes | Database password |
 | `AGENTOPS_API_KEY` | yes | Static API credential |
 | `AGENTOPS_AWS_ENABLED` | production | Enables AWS transport adapters |
-| `AGENTOPS_CLOUDWATCH_METRICS_ENABLED` | production | Enables the `AgentOpsGate` Micrometer registry; requires AWS transport to be enabled |
-| `AWS_REGION` | production | Region bound into both explicit SDK clients |
+| `AGENTOPS_CLOUDWATCH_METRICS_ENABLED` | production | Enables the `AgentOpsGate` CloudWatch registry; requires AWS transport |
+| `AWS_REGION` | production | Region for the explicit SDK clients |
 | `APPROVAL_QUEUE_URL` | production/local | Exact SQS queue URL |
 | `APPROVAL_DLQ_URL` | production/local | Exact approval DLQ URL used by admin replay |
 | `AUDIT_BUCKET` | production/local | Exact audit bucket name |
@@ -179,87 +340,38 @@ An export is idempotent at the object-key level: every run for a UTC day refresh
 | `OUTBOX_RELAY_INTERVAL` | no | Delay between outbox batches; default `PT1S` |
 | `AUDIT_EXPORT_ENABLED` | no | Enables nightly export |
 
-Production database credentials and the independently generated API key are injected from separate Secrets Manager values by the ECS task definition. AWS clients use `AWS_REGION` and the task-role credential chain; static AWS credentials are only used by the `local` profile.
-
-## Why each service
-
-| Service | Why | Interview line |
-|---|---|---|
-| Spring Boot 4, Java 21 | The bank stack: Web, Data JPA, Validation, Actuator | "Same framework their KYC APIs run on." |
-| RDS Postgres + Flyway | Rules and decisions are relational, versioned, audited; migrations in code | "Schema changes are reviewed and replayable." |
-| SQS + DLQ | Approval is async; a human answers later; retries and dead-letter for free | "Never block the API on a human." |
-| S3 export | Analytics reads batches, not the prod DB | "Streams results for analytics without touching prod." |
-| IAM task role | Least privilege: one queue, one bucket, one secret | "Blast radius of a compromised task is one queue." |
-| Secrets Manager | No DB password in env or repo | |
-| ECS Fargate | Containers without hosts; single task with public IP for the demo | "Same image runs in Compose and in Fargate." |
-| CloudWatch | Structured logs, application/ECS dashboard, and alarms on 5xx responses and DLQ depth | "I know it's broken before a user does." |
-| CDK (TypeScript) | Infra as code in a language I already write | "`cdk destroy` tears down everything." |
-| GitHub Actions + OIDC | Build, test, push to ECR, deploy on main | "CI/CD with no static keys." |
-| AWS SDK v2 directly | Spring Cloud AWS 3.4 is compiled against Boot 3 and fails under Boot 4 (`PropertyMapper` binary incompatibility); explicit clients, one fewer abstraction | "I read the stack trace instead of pinning an old Boot." |
-
-## Infrastructure and deployment
-
-The CDK app contains separate Network, Data, Queue, Bucket, Service, and Budget stacks. It intentionally creates only public subnets and no NAT gateway. The Fargate task receives a public IP; PostgreSQL remains non-public and accepts port 5432 only from the task security group. The API security group opens port 8080 because an ALB is deliberately out of scope.
-
-```bash
-cd infra
-npx tsc --noEmit
-npx cdk synth
-npx cdk deploy --all --require-approval never \
-  -c imageTag='<existing-ecr-image-tag>' \
-  -c budgetEmail='alerts@example.test' \
-  -c taskCpu=256 -c taskMemory=512
-```
-
-The deploy workflow uses GitHub OIDC and `vars.AWS_ROLE_ARN`; it contains no static AWS keys. It creates the named ECR repository if absent, pushes the commit-SHA image, and passes that tag to CDK.
-
-### One-time GitHub OIDC bootstrap
-
-Bootstrap CDK, deploy the independent OIDC stack, and copy its role output into the repository variable:
-
-```bash
-export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-cd infra
-npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/us-east-1"
-npx cdk deploy AgentOpsGithubOidcStack --require-approval never
-export AWS_ROLE_ARN="$(aws cloudformation describe-stacks --stack-name AgentOpsGithubOidcStack --query \"Stacks[0].Outputs[?OutputKey=='GithubDeployRoleArn'].OutputValue\" --output text)"
-cd ..
-gh variable set AWS_ROLE_ARN --body "$AWS_ROLE_ARN"
-```
-
-If the account already has GitHub's provider, add `-c oidcProviderArn="arn:aws:iam::$AWS_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"` to the deploy command. OIDC issues short-lived credentials through repo-and-branch-scoped trust. There are no static AWS keys to rotate or leak.
+Production database credentials and the independently generated API key are injected from separate Secrets Manager values. AWS clients use `AWS_REGION` and the task-role credential chain; static AWS credentials are only used by the `local` profile.
 
 ## Tests
 
-Pure tests and compilation work without Docker:
+Pure tests, the 2,000-seed simulation, and compilation work without Docker:
 
 ```bash
-./mvnw -o -q -Dtest='RulesEngineTest,ApprovalStateMachineTest,*CodecTest,*FilterTest,AuditExportServiceTest' \
+./mvnw -o -q -Dtest='RulesEngineTest,ApprovalStateMachineTest,*CodecTest,*FilterTest,AuditExportServiceTest,PolicyCacheTest,CloudWatchMetricsConfigurationTest,OutboxMetricsTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -o -q -Dtest=RulesEngineProperties -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -o -q -Dtest=SimulationTest -Dsim.seeds=2000 \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -o -q -DskipTests package
 ```
 
-The default Maven test discovery includes both JUnit `*Test` classes and jqwik `*Properties` classes. `SimulationTest` runs 200 deterministic seeds by default, prints its aggregate fault/terminal-state coverage, and writes the same data to `target/sim-coverage.json`; use `-Dsim.seeds=2000` for the long run or `-Dsim.seed=<n>` to reproduce one trace.
+The default Maven discovery includes JUnit `*Test` and jqwik `*Properties` classes. `SimulationTest` uses 200 seeds by default; set `-Dsim.seed=<n>` to reproduce one seed.
 
-Run the complete suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host. The AWS tests cover SQS publish, scheduled-worker delivery, duplicate handling, API approval, expiry, audit events, idempotent S3 export, and JSONL read-back:
+Run the complete 70-test suite, including PostgreSQL and LocalStack Testcontainers, on a Docker host:
 
 ```bash
 ./mvnw -o -q test
 ```
 
-## Cost posture
-
-This is a low-volume interview/demo architecture, not a free architecture. The single-AZ `db.t4g.micro` database and always-on Fargate task are the main steady costs; SQS, S3, ECR, Secrets Manager, logs, and public IPv4 also incur usage charges. The $10 AWS Budget is an alert, not a spending cap. Destroy disposable stacks promptly, while noting that the database, secret, and bucket use retain policies to prevent accidental data loss.
-
 ## Demo and data safety
 
-- The service evaluates proposals but has no capability to execute filesystem, browser, email, payment, deployment, or other external tools.
-- Local mode is sandboxed to the Compose PostgreSQL and LocalStack containers. Production mode is write-capable only for its scoped database, one queue, one bucket, and one secret.
-- API keys and database passwords are supplied at runtime and are never returned or logged.
-- Proposed arguments are persisted with the immutable decision; logs and audit detail records avoid copying them.
-- Denials, approval expiry, invalid transitions, queue disablement, and export unavailability are explicit states or errors rather than simulated success.
+- The service evaluates proposals but cannot execute filesystem, browser, email, payment, deployment, or other external tools.
+- Local mode is limited to the Compose PostgreSQL and LocalStack containers. Production AWS access is scoped to its database, queues, bucket, metrics namespace, and secrets.
+- API keys and database passwords are supplied at runtime and are not returned or logged.
+- Proposed arguments are persisted with the immutable decision; structured request logs do not read or copy request bodies.
+- Denials, approval expiry, invalid transitions, queue disablement, and export unavailability are explicit states or errors.
 
-## Deliberately left out
+## What was deliberately left out
 
 - Kubernetes
 - Kafka
@@ -269,4 +381,4 @@ This is a low-volume interview/demo architecture, not a free architecture. The s
 - An Application Load Balancer
 - NAT gateways
 
-Those additions would increase cost and operational surface without improving this service’s deliberately small policy-and-approval domain.
+These additions would increase cost or operational surface without changing the policy-and-approval requirements in scope.
