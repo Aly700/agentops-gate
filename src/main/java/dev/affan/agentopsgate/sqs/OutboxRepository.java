@@ -6,7 +6,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID> {
+public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID>, OutboxStore {
+
+    @Override
+    default OutboxMessage storeOutboxMessage(OutboxMessage message) {
+        return save(message);
+    }
 
     @Query(value = """
             SELECT *

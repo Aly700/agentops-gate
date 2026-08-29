@@ -14,13 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ApprovalService implements ApprovalMessageProcessor {
 
-    private final ApprovalRepository approvals;
+    private final ApprovalStore approvals;
     private final AuditService auditService;
     private final Clock clock;
     private final ApprovalMessageValidator messageValidator;
 
     public ApprovalService(
-            ApprovalRepository approvals,
+            ApprovalStore approvals,
             AuditService auditService,
             Clock clock,
             ApprovalMessageValidator messageValidator) {
@@ -49,7 +49,7 @@ public class ApprovalService implements ApprovalMessageProcessor {
     @Transactional
     public int expireStale() {
         Instant now = clock.instant();
-        List<Approval> stale = approvals.findByStatusAndExpiresAtLessThanEqualOrderByExpiresAtAscIdAsc(
+        List<Approval> stale = approvals.findStaleApprovals(
                 ApprovalStatus.PENDING,
                 now);
         stale.forEach(approval -> {
@@ -75,7 +75,7 @@ public class ApprovalService implements ApprovalMessageProcessor {
     }
 
     private Approval requireApproval(UUID id) {
-        return approvals.findById(id)
+        return approvals.findApprovalById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("approval", id));
     }
 

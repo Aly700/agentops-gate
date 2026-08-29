@@ -8,3 +8,4 @@ target/
 infra/node_modules/
 infra/cdk.out/
 infra/dist/
+.jqwik-database

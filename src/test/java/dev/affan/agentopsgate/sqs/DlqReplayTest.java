@@ -108,8 +108,8 @@ class DlqReplayTest {
                 AuditRecordRepository.class.getClassLoader(),
                 new Class<?>[] {AuditRecordRepository.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
-                    case "findById" -> Optional.empty();
-                    case "save" -> {
+                    case "findAuditRecordById" -> Optional.empty();
+                    case "storeAuditRecord" -> {
                         order.add("audit");
                         if (failOnSave) {
                             throw new IllegalStateException("audit unavailable");

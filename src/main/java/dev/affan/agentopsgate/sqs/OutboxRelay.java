@@ -18,7 +18,7 @@ public class OutboxRelay {
     private static final Logger LOGGER = LoggerFactory.getLogger(OutboxRelay.class);
     private static final int BATCH_SIZE = 50;
 
-    private final OutboxRepository outbox;
+    private final OutboxStore outbox;
     private final ApprovalQueuePublisher publisher;
     private final ApprovalMessageCodec codec;
     private final Counter sentCounter;
@@ -26,7 +26,7 @@ public class OutboxRelay {
     private final Clock clock;
 
     public OutboxRelay(
-            OutboxRepository outbox,
+            OutboxStore outbox,
             ApprovalQueuePublisher publisher,
             ApprovalMessageCodec codec,
             MeterRegistry meterRegistry,

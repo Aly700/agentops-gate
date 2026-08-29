@@ -12,11 +12,11 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class AuditService {
 
-    private final AuditRecordRepository auditRecords;
+    private final AuditStore auditRecords;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public AuditService(AuditRecordRepository auditRecords, ObjectMapper objectMapper, Clock clock) {
+    public AuditService(AuditStore auditRecords, ObjectMapper objectMapper, Clock clock) {
         this.auditRecords = auditRecords;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -35,7 +35,7 @@ public class AuditService {
                 aggregateId,
                 clock.instant(),
                 objectMapper.writeValueAsString(details));
-        return auditRecords.save(record);
+        return auditRecords.storeAuditRecord(record);
     }
 
     @Transactional
@@ -45,13 +45,14 @@ public class AuditService {
             String aggregateType,
             UUID aggregateId,
             Map<String, ?> details) {
-        return auditRecords.findById(recordId).orElseGet(() -> auditRecords.save(AuditRecord.create(
-                recordId,
-                eventType,
-                aggregateType,
-                aggregateId,
-                clock.instant(),
-                objectMapper.writeValueAsString(details))));
+        return auditRecords.findAuditRecordById(recordId)
+                .orElseGet(() -> auditRecords.storeAuditRecord(AuditRecord.create(
+                        recordId,
+                        eventType,
+                        aggregateType,
+                        aggregateId,
+                        clock.instant(),
+                        objectMapper.writeValueAsString(details))));
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +60,6 @@ public class AuditService {
         if (from == null || to == null || !from.isBefore(to)) {
             throw new IllegalArgumentException("from must be before to");
         }
-        return auditRecords.findByOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAscIdAsc(from, to);
+        return auditRecords.findAuditRecords(from, to);
     }
 }

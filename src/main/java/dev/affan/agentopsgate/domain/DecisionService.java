@@ -6,7 +6,7 @@ import dev.affan.agentopsgate.rules.RulesEngine;
 import dev.affan.agentopsgate.sqs.ApprovalMessage;
 import dev.affan.agentopsgate.sqs.ApprovalMessageCodec;
 import dev.affan.agentopsgate.sqs.OutboxMessage;
-import dev.affan.agentopsgate.sqs.OutboxRepository;
+import dev.affan.agentopsgate.sqs.OutboxStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,24 +21,24 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DecisionService {
 
-    private final PolicyRepository policies;
-    private final RuleRepository rules;
-    private final DecisionRepository decisions;
-    private final ApprovalRepository approvals;
+    private final PolicyStore policies;
+    private final RuleStore rules;
+    private final DecisionStore decisions;
+    private final ApprovalStore approvals;
     private final RulesEngine rulesEngine;
-    private final OutboxRepository outbox;
+    private final OutboxStore outbox;
     private final ApprovalMessageCodec approvalMessageCodec;
     private final AuditService auditService;
     private final Clock clock;
     private final Duration approvalTtl;
 
     public DecisionService(
-            PolicyRepository policies,
-            RuleRepository rules,
-            DecisionRepository decisions,
-            ApprovalRepository approvals,
+            PolicyStore policies,
+            RuleStore rules,
+            DecisionStore decisions,
+            ApprovalStore approvals,
             RulesEngine rulesEngine,
-            OutboxRepository outbox,
+            OutboxStore outbox,
             ApprovalMessageCodec approvalMessageCodec,
             AuditService auditService,
             Clock clock,
@@ -57,9 +57,9 @@ public class DecisionService {
 
     @Transactional
     public DecisionOutcome evaluate(EvaluateDecisionCommand command) {
-        Policy policy = policies.findById(command.policyId())
+        Policy policy = policies.findPolicyById(command.policyId())
                 .orElseThrow(() -> new ResourceNotFoundException("policy", command.policyId()));
-        List<Rule> orderedRules = rules.findByPolicyIdOrderByPrecedenceAscIdAsc(policy.getId());
+        List<Rule> orderedRules = rules.findRulesByPolicyId(policy.getId());
         RuleEvaluation evaluation = rulesEngine.evaluate(
                 orderedRules.stream().map(Rule::toDefinition).toList(),
                 new ProposedCall(
@@ -68,7 +68,7 @@ public class DecisionService {
                         command.argumentsJson(),
                         command.riskTier()));
         Instant now = clock.instant();
-        Decision decision = decisions.save(Decision.create(
+        Decision decision = decisions.storeDecision(Decision.create(
                 UUID.randomUUID(),
                 policy.getId(),
                 policy.getVersion(),
@@ -90,12 +90,12 @@ public class DecisionService {
 
     @Transactional(readOnly = true)
     public Decision get(UUID id) {
-        return decisions.findById(id)
+        return decisions.findDecisionById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("decision", id));
     }
 
     private Approval createApproval(Decision decision, Instant now) {
-        Approval approval = approvals.save(Approval.pending(
+        Approval approval = approvals.storeApproval(Approval.pending(
                 UUID.randomUUID(),
                 decision.getId(),
                 now,
@@ -110,7 +110,7 @@ public class DecisionService {
         UUID messageId = UUID.randomUUID();
         ApprovalMessage message = new ApprovalMessage(
                 messageId, approval.getId(), decision.getId(), approval.getExpiresAt());
-        outbox.save(OutboxMessage.pending(
+        outbox.storeOutboxMessage(OutboxMessage.pending(
                 messageId,
                 "APPROVAL",
                 approval.getId(),
