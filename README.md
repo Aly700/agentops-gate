@@ -2,6 +2,8 @@
 
 AgentOps Gate evaluates proposed AI tool calls against an ordered policy. It returns `ALLOW`, `DENY`, or `REQUIRE_APPROVAL`; it does not execute the tool call. Approval-required decisions create durable human-review work, and every state change is recorded in an append-only audit stream.
 
+![75-second walkthrough: policy → three decisions → idempotent replay → approval → audit → S3 export](docs/evidence/demo.gif)
+
 ## Status
 
 As of 2026-08-29:
