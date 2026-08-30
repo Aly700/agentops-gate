@@ -9,3 +9,4 @@ infra/node_modules/
 infra/cdk.out/
 infra/dist/
 .jqwik-database
+infra/cdk.context.json
