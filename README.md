@@ -13,7 +13,7 @@ As of 2026-08-29:
 - AWS: deployed by hand with `cdk deploy` into a personal account, exercised end to end, load-tested at
   two task sizes, chaos-tested, then destroyed. Every number in this README comes from those runs and
   is recorded under [docs/evidence/](docs/evidence/). The account currently holds no running resources.
-- CI/CD: exercised on 2026-08-29 from a private GitHub repository — CI (Testcontainers on the Ubuntu
+- CI/CD: exercised on 2026-08-29 from this repository (private at the time) — CI (Testcontainers on the Ubuntu
   runner) is green, and the Deploy workflow (manual dispatch → OIDC assume-role → Maven → Docker → ECR →
   `cdk deploy` of the six app stacks; run 33264013858, commit `8f375e7`) deployed the service, which then passed
   the same end-to-end walkthrough recorded in [docs/evidence/](docs/evidence/). No static AWS keys exist

@@ -1,6 +1,6 @@
 # CI/CD pipeline — exercised (2026-08-29)
 
-Repository: private GitHub repository `Aly700/agentops-gate` (not yet public). Trigger: `workflow_dispatch`
+Repository: `Aly700/agentops-gate` (private at the time of this run; public since 2026-08-30). Trigger: `workflow_dispatch`
 (deploys are deliberately manual so a documentation push can never start billable infrastructure).
 
 | Step (GitHub Actions, ubuntu-latest) | Result |
