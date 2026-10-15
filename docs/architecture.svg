@@ -1,103 +1,108 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="660" viewBox="0 0 1000 660" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12" fill="#1d2430">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="910" viewBox="0 0 1200 910" font-family="Helvetica Neue, Helvetica, Arial, Liberation Sans, sans-serif" font-size="12" fill="#1d2430">
 <title>AgentOps Gate architecture</title>
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1d2430"/></marker></defs>
-<rect width="1000" height="660" fill="#ffffff"/>
-<rect x="230" y="20" width="750" height="540" rx="2" fill="none" stroke="#1d2430" stroke-width="1.4"/>
-<rect x="238" y="28" width="22" height="22" fill="#1d2430"/><g transform="translate(241.0,31.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 3.8 3.8 0 0 1 18 18z"/></g>
-<text x="266" y="44" font-size="13" font-weight="600" fill="#1d2430">AWS Cloud</text>
-<rect x="250" y="56" width="710" height="486" rx="2" fill="none" stroke="#2a9d8f" stroke-width="1.4" stroke-dasharray="6 4"/>
-<rect x="258" y="64" width="22" height="22" fill="#2a9d8f"/><g transform="translate(261.0,67.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></g>
-<text x="286" y="80" font-size="13" font-weight="600" fill="#1d2430">Region us-east-1 · one personal account</text>
-<rect x="420" y="96" width="330" height="420" rx="2" fill="none" stroke="#5b4bb7" stroke-width="1.4" stroke-dasharray="6 4"/>
-<rect x="428" y="104" width="22" height="22" fill="#5b4bb7"/><g transform="translate(431.0,107.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l8 4.5v10l-8 4.5-8-4.5V7z"/><path d="M4 7l8 4.5 8-4.5M12 11.5v10"/></g>
-<text x="456" y="120" font-size="13" font-weight="600" fill="#1d2430">VPC · two public subnets · no NAT, no ALB</text>
-<path d="M200.0 156.0 L440.0 173.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
-<circle cx="320.0" cy="164.5" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="320.0" y="168.5" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">1</text>
-<text x="320.0" y="146.0" font-size="10.5" fill="#6b7280" text-anchor="middle">POST /decisions</text>
-<path d="M540.0 272.0 L540.0 350.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-start="url(#arr)" marker-end="url(#arr)"/>
-<circle cx="540.0" cy="311.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="540.0" y="315.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">2</text>
-<path d="M640.0 166.4 L770.0 139.2" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
-<circle cx="705.0" cy="152.8" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="705.0" y="156.8" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">3</text>
-<text x="700.0" y="162.0" font-size="10.5" fill="#6b7280" text-anchor="middle">outbox relay, every 1 s</text>
-<path d="M770.0 160.8 L640.0 212.6" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
-<circle cx="705.0" cy="186.7" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="705.0" y="190.7" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">4</text>
-<text x="700.0" y="208.0" font-size="10.5" fill="#6b7280" text-anchor="middle">worker long-polls 20 s</text>
-<path d="M855.0 168.0 L855.0 196.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
-<circle cx="855.0" cy="182.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="855.0" y="186.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">5</text>
-<path d="M200.0 296.0 L440.0 219.2" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
-<circle cx="320.0" cy="257.6" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="320.0" y="261.6" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">6</text>
-<text x="330.0" y="236.0" font-size="10.5" fill="#6b7280" text-anchor="middle">POST /approvals/{id}/approve | deny</text>
-<path d="M200.0 436.0 L330.0 436.0 L330.0 263.0 L440.0 262.8" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<circle cx="330.0" cy="359.5" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="330.0" y="363.5" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">7</text>
-<text x="305.0" y="470.0" font-size="10.5" fill="#6b7280" text-anchor="middle">/admin/dlq/replay · /admin/exports/audit</text>
-<path d="M640.0 258.8 L770.0 286.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<circle cx="705.0" cy="272.4" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="705.0" y="276.4" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">8</text>
-<text x="690.0" y="298.0" font-size="10.5" fill="#6b7280" text-anchor="middle">daily audit export</text>
-<path d="M460.0 272.0 L460.0 316.0 L740.0 316.0 L740.0 418.0 L770.0 418.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<circle cx="644.0" cy="316.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="644.0" y="320.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">9</text>
-<text x="660.0" y="330.0" font-size="10.5" fill="#6b7280" text-anchor="middle">metrics each minute · logs</text>
-<path d="M770.0 352.0 L760.0 352.0 L760.0 128.0 L600.0 128.0 L600.0 140.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<path d="M770.0 484.0 L758.0 484.0 L758.0 263.0 L640.0 262.8" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<path d="M872.0 584.0 L872.0 508.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
-<circle cx="872.0" cy="546.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text x="872.0" y="550.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">10</text>
-<rect x="20" y="110" width="180" height="92" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(95.0,118.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l8 4.6v9.2l-8 4.6-8-4.6V7.1z"/><circle cx="12" cy="12" r="2.5"/><path d="M12 9.5V6M12 14.5V18M9.8 10.8 6.6 9M14.2 10.8 17.4 9M9.8 13.2 6.6 15M14.2 13.2 17.4 15"/></g>
-<text x="110.0" y="163.0" text-anchor="middle" font-size="12" font-weight="600">Agent or tool runner</text>
-<text x="110.0" y="177.0" text-anchor="middle" font-size="12" font-weight="400">proposes a tool call</text>
-<text x="110.0" y="192.0" text-anchor="middle" font-size="10.5" fill="#6b7280">X-API-Key · Idempotency-Key</text>
-<rect x="20" y="250" width="180" height="92" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(95.0,258.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M15 20c0-2.4 1.6-4.5 4-5.2 1.7.4 3 2 3 5.2"/></g>
-<text x="110.0" y="303.0" text-anchor="middle" font-size="12" font-weight="600">Human reviewer</text>
-<text x="110.0" y="317.0" text-anchor="middle" font-size="12" font-weight="400">approves or denies by REST</text>
-<text x="110.0" y="332.0" text-anchor="middle" font-size="10.5" fill="#6b7280">same API key · no console</text>
-<rect x="20" y="390" width="180" height="92" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(95.0,398.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g>
-<text x="110.0" y="443.0" text-anchor="middle" font-size="12" font-weight="600">Operator</text>
-<text x="110.0" y="457.0" text-anchor="middle" font-size="12" font-weight="400">DLQ replay · audit export</text>
-<text x="110.0" y="472.0" text-anchor="middle" font-size="10.5" fill="#6b7280">aws CLI · curl · runbook</text>
-<rect x="740" y="584" width="220" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(750.0,600.0) scale(1.000)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7M12 13v4"/></g>
-<text x="782.0" y="609.0" font-size="12" font-weight="600">GitHub Actions</text>
-<text x="782.0" y="623.0" font-size="12" font-weight="400">CI on push · Deploy by OIDC role</text>
-<rect x="440" y="140" width="200" height="132" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(525.0,148.0) scale(1.250)" fill="none" stroke="#e07a1f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2.5v3.5M15 2.5v3.5M9 18v3.5M15 18v3.5M2.5 9h3.5M2.5 15h3.5M18 9h3.5M18 15h3.5"/></g>
-<text x="540.0" y="193.0" text-anchor="middle" font-size="12" font-weight="600">ECS Fargate task</text>
-<text x="540.0" y="207.0" text-anchor="middle" font-size="12" font-weight="400">agentops-gate · Spring Boot 4, Java 21</text>
-<text x="540.0" y="221.0" text-anchor="middle" font-size="12" font-weight="400">public IP · tcp/8080</text>
-<text x="540.0" y="235.0" text-anchor="middle" font-size="12" font-weight="400">filters · rules engine · policy cache</text>
-<text x="540.0" y="249.0" text-anchor="middle" font-size="12" font-weight="400">outbox relay · SQS worker · sweeps</text>
-<text x="540.0" y="264.0" text-anchor="middle" font-size="10.5" fill="#6b7280">0.25 vCPU · 0.5 GB · one task</text>
-<rect x="440" y="350" width="290" height="104" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(570.0,358.0) scale(1.250)" fill="none" stroke="#3b5bdb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></g>
-<text x="585.0" y="403.0" text-anchor="middle" font-size="12" font-weight="600">Amazon RDS · PostgreSQL 16.13</text>
-<text x="585.0" y="417.0" text-anchor="middle" font-size="12" font-weight="400">agentops_gate</text>
-<text x="585.0" y="432.0" text-anchor="middle" font-size="10.5" fill="#6b7280">decisions · approvals · audit_records · outbox …</text>
-<rect x="770" y="120" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,132.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="17" y="9" width="5" height="6"/><path d="M2 5h20M2 19h20"/></g>
-<text x="812.0" y="141.0" font-size="12" font-weight="600">Amazon SQS</text>
-<text x="812.0" y="155.0" font-size="12" font-weight="400">approvals queue</text>
-<rect x="770" y="196" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,208.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="17" y="9" width="5" height="6"/><path d="M2 5h20M2 19h20"/></g>
-<text x="812.0" y="217.0" font-size="12" font-weight="600">SQS dead-letter queue</text>
-<text x="812.0" y="231.0" font-size="12" font-weight="400">after 5 failed receives</text>
-<rect x="770" y="262" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,274.0) scale(1.000)" fill="none" stroke="#2a9d8f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14l-1.5 13.5a1 1 0 0 1-1 .9h-9a1 1 0 0 1-1-.9z"/><ellipse cx="12" cy="6" rx="7" ry="2"/></g>
-<text x="812.0" y="283.0" font-size="12" font-weight="600">Amazon S3 audit bucket</text>
-<text x="812.0" y="297.0" font-size="12" font-weight="400">audit/dt=YYYY-MM-DD/*.jsonl</text>
-<rect x="770" y="328" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,340.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M15 12v2.5"/></g>
-<text x="812.0" y="349.0" font-size="12" font-weight="600">AWS Secrets Manager</text>
-<text x="812.0" y="363.0" font-size="12" font-weight="400">DB credentials · API key</text>
-<rect x="770" y="394" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,406.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></g>
-<text x="812.0" y="415.0" font-size="12" font-weight="600">Amazon CloudWatch</text>
-<text x="812.0" y="429.0" font-size="12" font-weight="400">AgentOpsGate metrics · 2 alarms</text>
-<rect x="770" y="460" width="170" height="48" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
-<g transform="translate(780.0,472.0) scale(1.000)" fill="none" stroke="#e07a1f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></g>
-<text x="812.0" y="481.0" font-size="12" font-weight="600">Amazon ECR</text>
-<text x="812.0" y="495.0" font-size="12" font-weight="400">agentops-gate:&lt;sha&gt;</text>
-<text x="440" y="474" font-size="10.5" fill="#6b7280" font-style="italic">system of record · immutability triggers on decisions and audit_records</text>
-<text x="258" y="534" font-size="10.5" fill="#6b7280" font-style="italic">deploy role agentops-gate-github-deploy (OIDC, main only) · AWS Budgets $10 / month · nothing deployed between demos</text>
-<text x="20" y="215" font-size="10.5" fill="#6b7280" font-style="italic">returns ALLOW, DENY or REQUIRE_APPROVAL;</text>
-<text x="20" y="228" font-size="10.5" fill="#6b7280" font-style="italic">never executes the tool call</text>
+<rect width="1200" height="910" fill="#ffffff"/>
+<rect data-kind="region" data-id="cloud" x="244" y="20" width="936" height="780" rx="2" fill="none" stroke="#1d2430" stroke-width="1.4"/>
+<rect data-kind="region-icon" data-of="cloud" x="252" y="28" width="22" height="22" fill="#1d2430"/><g data-kind="region-icon-art" data-of="cloud" transform="translate(255.0,31.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 3.8 3.8 0 0 1 18 18z"/></g>
+<text data-kind="region-label" data-of="cloud" x="280" y="44" font-size="13" font-weight="600" fill="#1d2430">AWS Cloud</text>
+<rect data-kind="region" data-id="region" x="264" y="64" width="896" height="716" rx="2" fill="none" stroke="#2a9d8f" stroke-width="1.4" stroke-dasharray="6 4"/>
+<rect data-kind="region-icon" data-of="region" x="272" y="72" width="22" height="22" fill="#2a9d8f"/><g data-kind="region-icon-art" data-of="region" transform="translate(275.0,75.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></g>
+<text data-kind="region-label" data-of="region" x="300" y="88" font-size="13" font-weight="600" fill="#1d2430">Region us-east-1 · one personal account</text>
+<rect data-kind="region" data-id="vpc" x="430" y="110" width="340" height="600" rx="2" fill="none" stroke="#5b4bb7" stroke-width="1.4" stroke-dasharray="6 4"/>
+<rect data-kind="region-icon" data-of="vpc" x="438" y="118" width="22" height="22" fill="#5b4bb7"/><g data-kind="region-icon-art" data-of="vpc" transform="translate(441.0,121.0) scale(0.667)" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l8 4.5v10l-8 4.5-8-4.5V7z"/><path d="M4 7l8 4.5 8-4.5M12 11.5v10"/></g>
+<text data-kind="region-label" data-of="vpc" x="466" y="134" font-size="13" font-weight="600" fill="#1d2430">VPC · two public subnets · no NAT, no ALB</text>
+<path data-kind="edge" data-edge="0" data-from="agent" data-to="task" data-n="1" d="M220.0 210.0 L450.0 210.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="1" data-edge="0" cx="340.0" cy="210.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="1" data-edge="0" x="340.0" y="214.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">1</text>
+<text data-kind="edge-label" data-edge="0" x="340.0" y="190.0" font-size="10.5" fill="#6b7280" text-anchor="middle">POST /decisions</text>
+<path data-kind="edge" data-edge="1" data-from="task" data-to="rds" data-n="2" d="M600.0 460.0 L600.0 550.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="2" data-edge="1" cx="600.0" cy="505.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="2" data-edge="1" x="600.0" y="509.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">2</text>
+<path data-kind="edge" data-edge="2" data-from="task" data-to="sqs" data-n="3" d="M750.0 180.0 L900.0 180.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="3" data-edge="2" cx="835.0" cy="180.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="3" data-edge="2" x="835.0" y="184.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">3</text>
+<text data-kind="edge-label" data-edge="2" x="835.0" y="160.0" font-size="10.5" fill="#6b7280" text-anchor="middle">outbox relay, every 1 s</text>
+<path data-kind="edge" data-edge="3" data-from="sqs" data-to="task" data-n="4" d="M900.0 200.0 L880.0 200.0 L880.0 220.0 L750.0 220.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="4" data-edge="3" cx="835.0" cy="220.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="4" data-edge="3" x="835.0" y="224.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">4</text>
+<text data-kind="edge-label" data-edge="3" x="835.0" y="242.0" font-size="10.5" fill="#6b7280" text-anchor="middle">worker long-polls 20 s</text>
+<path data-kind="edge" data-edge="4" data-from="sqs" data-to="dlq" data-n="5" d="M1020.0 210.0 L1020.0 250.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="5" data-edge="4" cx="1020.0" cy="230.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="5" data-edge="4" x="1020.0" y="234.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">5</text>
+<path data-kind="edge" data-edge="5" data-from="reviewer" data-to="task" data-n="6" d="M220.0 400.0 L350.0 400.0 L350.0 330.0 L450.0 330.0" fill="none" stroke="#1d2430" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="6" data-edge="5" cx="390.0" cy="330.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="6" data-edge="5" x="390.0" y="334.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">6</text>
+<text data-kind="edge-label" data-edge="5" x="350.0" y="296.0" font-size="10.5" fill="#6b7280" text-anchor="middle">POST /approvals/{id}/approve</text>
+<text data-kind="edge-label" data-edge="5" x="350.0" y="309.0" font-size="10.5" fill="#6b7280" text-anchor="middle">| deny</text>
+<path data-kind="edge" data-edge="6" data-from="operator" data-to="task" data-n="7" d="M220.0 568.0 L380.0 568.0 L380.0 430.0 L450.0 430.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="7" data-edge="6" cx="380.0" cy="490.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="7" data-edge="6" x="380.0" y="494.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">7</text>
+<text data-kind="edge-label" data-edge="6" x="350.0" y="589.0" font-size="10.5" fill="#6b7280" text-anchor="middle">/admin/dlq/replay ·</text>
+<text data-kind="edge-label" data-edge="6" x="350.0" y="602.0" font-size="10.5" fill="#6b7280" text-anchor="middle">/admin/exports/audit</text>
+<path data-kind="edge" data-edge="7" data-from="task" data-to="s3" data-n="8" d="M750.0 310.0 L865.0 310.0 L865.0 370.0 L900.0 370.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="8" data-edge="7" cx="835.0" cy="310.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="8" data-edge="7" x="835.0" y="314.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">8</text>
+<text data-kind="edge-label" data-edge="7" x="835.0" y="290.0" font-size="10.5" fill="#6b7280" text-anchor="middle">daily audit export</text>
+<path data-kind="edge" data-edge="8" data-from="task" data-to="cw" data-n="9" d="M750.0 390.0 L815.0 390.0 L815.0 538.0 L900.0 538.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="9" data-edge="8" cx="855.0" cy="538.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="9" data-edge="8" x="855.0" y="542.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">9</text>
+<text data-kind="edge-label" data-edge="8" x="845.0" y="559.0" font-size="10.5" fill="#6b7280" text-anchor="middle">metrics each minute</text>
+<text data-kind="edge-label" data-edge="8" x="845.0" y="572.0" font-size="10.5" fill="#6b7280" text-anchor="middle">· logs</text>
+<path data-kind="edge" data-edge="9" data-from="secrets" data-to="task" data-n="" d="M900.0 454.0 L840.0 454.0 L840.0 345.0 L750.0 345.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<path data-kind="edge" data-edge="10" data-from="ecr" data-to="task" data-n="" d="M900.0 622.0 L790.0 622.0 L790.0 435.0 L750.0 435.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<path data-kind="edge" data-edge="11" data-from="github" data-to="ecr" data-n="10" d="M1020.0 834.0 L1020.0 650.0" fill="none" stroke="#1d2430" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+<circle data-kind="badge" data-n="10" data-edge="11" cx="1020.0" cy="714.0" r="10" fill="#232f3e" stroke="#ffffff" stroke-width="1.5"/><text data-kind="badge-text" data-n="10" data-edge="11" x="1020.0" y="718.0" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">10</text>
+<rect data-kind="node" data-id="agent" x="20" y="184" width="200" height="96" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="agent" transform="translate(105.0,192.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l8 4.6v9.2l-8 4.6-8-4.6V7.1z"/><circle cx="12" cy="12" r="2.5"/><path d="M12 9.5V6M12 14.5V18M9.8 10.8 6.6 9M14.2 10.8 17.4 9M9.8 13.2 6.6 15M14.2 13.2 17.4 15"/></g>
+<text data-kind="node-text" data-of="agent" x="120.0" y="237.0" text-anchor="middle" font-size="12" font-weight="600">Agent or tool runner</text>
+<text data-kind="node-text" data-of="agent" x="120.0" y="251.0" text-anchor="middle" font-size="12" font-weight="400">proposes a tool call</text>
+<text data-kind="node-text" data-of="agent" x="120.0" y="266.0" text-anchor="middle" font-size="10.5" fill="#6b7280">X-API-Key · Idempotency-Key</text>
+<rect data-kind="node" data-id="reviewer" x="20" y="352" width="200" height="96" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="reviewer" transform="translate(105.0,360.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M15 20c0-2.4 1.6-4.5 4-5.2 1.7.4 3 2 3 5.2"/></g>
+<text data-kind="node-text" data-of="reviewer" x="120.0" y="405.0" text-anchor="middle" font-size="12" font-weight="600">Human reviewer</text>
+<text data-kind="node-text" data-of="reviewer" x="120.0" y="419.0" text-anchor="middle" font-size="12" font-weight="400">approves or denies by REST</text>
+<text data-kind="node-text" data-of="reviewer" x="120.0" y="434.0" text-anchor="middle" font-size="10.5" fill="#6b7280">same API key · no console</text>
+<rect data-kind="node" data-id="operator" x="20" y="520" width="200" height="96" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="operator" transform="translate(105.0,528.0) scale(1.250)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g>
+<text data-kind="node-text" data-of="operator" x="120.0" y="573.0" text-anchor="middle" font-size="12" font-weight="600">Operator</text>
+<text data-kind="node-text" data-of="operator" x="120.0" y="587.0" text-anchor="middle" font-size="12" font-weight="400">DLQ replay · audit export</text>
+<text data-kind="node-text" data-of="operator" x="120.0" y="602.0" text-anchor="middle" font-size="10.5" fill="#6b7280">aws CLI · curl · runbook</text>
+<rect data-kind="node" data-id="github" x="900" y="834" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="github" transform="translate(910.0,850.0) scale(1.000)" fill="none" stroke="#1d2430" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6 7v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7M12 13v4"/></g>
+<text data-kind="node-text" data-of="github" x="942.0" y="859.0" font-size="12" font-weight="600">GitHub Actions</text>
+<text data-kind="node-text" data-of="github" x="942.0" y="873.0" font-size="12" font-weight="400">CI on push · Deploy by OIDC role</text>
+<rect data-kind="node" data-id="task" x="450" y="160" width="300" height="300" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="task" transform="translate(585.0,254.0) scale(1.250)" fill="none" stroke="#e07a1f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2.5v3.5M15 2.5v3.5M9 18v3.5M15 18v3.5M2.5 9h3.5M2.5 15h3.5M18 9h3.5M18 15h3.5"/></g>
+<text data-kind="node-text" data-of="task" x="600.0" y="299.0" text-anchor="middle" font-size="12" font-weight="600">ECS Fargate task</text>
+<text data-kind="node-text" data-of="task" x="600.0" y="313.0" text-anchor="middle" font-size="12" font-weight="400">agentops-gate · Spring Boot 4, Java 21</text>
+<text data-kind="node-text" data-of="task" x="600.0" y="327.0" text-anchor="middle" font-size="12" font-weight="400">public IP · tcp/8080</text>
+<text data-kind="node-text" data-of="task" x="600.0" y="341.0" text-anchor="middle" font-size="12" font-weight="400">filters · rules engine · policy cache</text>
+<text data-kind="node-text" data-of="task" x="600.0" y="355.0" text-anchor="middle" font-size="12" font-weight="400">outbox relay · SQS worker · sweeps</text>
+<text data-kind="node-text" data-of="task" x="600.0" y="370.0" text-anchor="middle" font-size="10.5" fill="#6b7280">0.25 vCPU · 0.5 GB · one task</text>
+<rect data-kind="node" data-id="rds" x="450" y="550" width="300" height="104" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="rds" transform="translate(585.0,558.0) scale(1.250)" fill="none" stroke="#3b5bdb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></g>
+<text data-kind="node-text" data-of="rds" x="600.0" y="603.0" text-anchor="middle" font-size="12" font-weight="600">Amazon RDS · PostgreSQL 16.13</text>
+<text data-kind="node-text" data-of="rds" x="600.0" y="617.0" text-anchor="middle" font-size="12" font-weight="400">agentops_gate</text>
+<text data-kind="node-text" data-of="rds" x="600.0" y="632.0" text-anchor="middle" font-size="10.5" fill="#6b7280">decisions · approvals · audit_records · outbox …</text>
+<rect data-kind="node" data-id="sqs" x="900" y="154" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="sqs" transform="translate(910.0,170.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="17" y="9" width="5" height="6"/><path d="M2 5h20M2 19h20"/></g>
+<text data-kind="node-text" data-of="sqs" x="942.0" y="179.0" font-size="12" font-weight="600">Amazon SQS</text>
+<text data-kind="node-text" data-of="sqs" x="942.0" y="193.0" font-size="12" font-weight="400">approvals queue</text>
+<rect data-kind="node" data-id="dlq" x="900" y="250" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="dlq" transform="translate(910.0,266.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="17" y="9" width="5" height="6"/><path d="M2 5h20M2 19h20"/></g>
+<text data-kind="node-text" data-of="dlq" x="942.0" y="275.0" font-size="12" font-weight="600">SQS dead-letter queue</text>
+<text data-kind="node-text" data-of="dlq" x="942.0" y="289.0" font-size="12" font-weight="400">after 5 failed receives</text>
+<rect data-kind="node" data-id="s3" x="900" y="342" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="s3" transform="translate(910.0,358.0) scale(1.000)" fill="none" stroke="#2a9d8f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14l-1.5 13.5a1 1 0 0 1-1 .9h-9a1 1 0 0 1-1-.9z"/><ellipse cx="12" cy="6" rx="7" ry="2"/></g>
+<text data-kind="node-text" data-of="s3" x="942.0" y="367.0" font-size="12" font-weight="600">Amazon S3 audit bucket</text>
+<text data-kind="node-text" data-of="s3" x="942.0" y="381.0" font-size="12" font-weight="400">audit/dt=YYYY-MM-DD/*.jsonl</text>
+<rect data-kind="node" data-id="secrets" x="900" y="426" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="secrets" transform="translate(910.0,442.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M15 12v2.5"/></g>
+<text data-kind="node-text" data-of="secrets" x="942.0" y="451.0" font-size="12" font-weight="600">AWS Secrets Manager</text>
+<text data-kind="node-text" data-of="secrets" x="942.0" y="465.0" font-size="12" font-weight="400">DB credentials · API key</text>
+<rect data-kind="node" data-id="cw" x="900" y="510" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="cw" transform="translate(910.0,526.0) scale(1.000)" fill="none" stroke="#c2255c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></g>
+<text data-kind="node-text" data-of="cw" x="942.0" y="535.0" font-size="12" font-weight="600">Amazon CloudWatch</text>
+<text data-kind="node-text" data-of="cw" x="942.0" y="549.0" font-size="12" font-weight="400">AgentOpsGate metrics · 2 alarms</text>
+<rect data-kind="node" data-id="ecr" x="900" y="594" width="240" height="56" rx="2" fill="#ffffff" stroke="#1d2430" stroke-width="1.2"/>
+<g data-kind="node-icon" data-of="ecr" transform="translate(910.0,610.0) scale(1.000)" fill="none" stroke="#e07a1f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></g>
+<text data-kind="node-text" data-of="ecr" x="942.0" y="619.0" font-size="12" font-weight="600">Amazon ECR</text>
+<text data-kind="node-text" data-of="ecr" x="942.0" y="633.0" font-size="12" font-weight="400">agentops-gate:&lt;sha&gt;</text>
+<text data-kind="note" data-note="0" x="450" y="677" font-size="10.5" fill="#6b7280" font-style="italic">system of record · immutability triggers</text>
+<text data-kind="note" data-note="0" x="450" y="690" font-size="10.5" fill="#6b7280" font-style="italic">on decisions and audit_records</text>
+<text data-kind="note" data-note="1" x="284" y="751" font-size="10.5" fill="#6b7280" font-style="italic">deploy role agentops-gate-github-deploy (OIDC, main only) · AWS Budgets $10 / month · nothing deployed between demos</text>
+<text data-kind="note" data-note="2" x="20" y="299" font-size="10.5" fill="#6b7280" font-style="italic">returns ALLOW, DENY or</text>
+<text data-kind="note" data-note="2" x="20" y="312" font-size="10.5" fill="#6b7280" font-style="italic">REQUIRE_APPROVAL;</text>
+<text data-kind="note" data-note="2" x="20" y="325" font-size="10.5" fill="#6b7280" font-style="italic">never executes the tool call</text>
 </svg>
