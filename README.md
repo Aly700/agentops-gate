@@ -27,25 +27,9 @@ The domain stays small: versioned policies contain ordered rules; a rule can mat
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Client[Agent or client] -->|X-API-Key + Idempotency-Key| API[Spring Boot API<br/>ECS Fargate]
-    API --> Idem[Idempotency record]
-    API --> Cache[Policy cache]
-    Cache --> Rules[Ordered rules engine]
-    API -->|one transaction:<br/>decision + audit<br/>+ approval + outbox when required| DB[(PostgreSQL)]
-    DB --> Relay[Scheduled outbox relay]
-    Relay -->|stable messageId| Queue[SQS approval queue]
-    Queue --> Worker[SDK v2 long-poll worker]
-    Worker -->|processed_messages + notified_at<br/>in one transaction| DB
-    Queue -->|five failed receives| DLQ[SQS DLQ]
-    DLQ -->|audited admin replay| Queue
-    Reviewer[Human reviewer] -->|approve or deny| API
-    Expiry[Scheduled expiry sweep] --> DB
-    DB --> Export[Scheduled or admin export]
-    Export -->|audit/dt=YYYY-MM-DD/*.jsonl| S3[S3]
-    API --> Metrics[CloudWatch logs, metrics,<br/>alarms, dashboard]
-```
+![AgentOps Gate architecture: agents, a reviewer and an operator outside AWS; one Fargate task with PostgreSQL as the system of record, SQS for approval work, S3 for audit export](docs/architecture.svg)
+
+The numbered arrows are walked one by one in [docs/architecture.md](docs/architecture.md), with the component table, the trust and data boundaries, and where each guarantee is proven.
 
 The HTTP API, outbox relay, SQS worker, expiry sweep, and export scheduler run in one image. Compose runs that image with PostgreSQL and LocalStack; Fargate runs it with RDS, SQS, and S3. The rules engine is plain Java. The policy cache is keyed by policy ID and rule-set version and is invalidated when a rule is added.
 
